@@ -94,10 +94,10 @@
   "jei.stardustindustry.category.crushing": "Crushing",
   "jei.stardustindustry.chance": "Chance: %s%%",
 
-  "tier.stardustindustry.lv": "Low Voltage",
-  "tier.stardustindustry.mv": "Medium Voltage",
-  "tier.stardustindustry.hv": "High Voltage",
-  "tier.stardustindustry.ehv": "Extreme High Voltage",
+  "tier.stardustindustry.lv": "LV",
+  "tier.stardustindustry.mv": "MV",
+  "tier.stardustindustry.hv": "HV",
+  "tier.stardustindustry.ehv": "EHV",
 
   "stardustindustry.configuration.title": "Stardust Industry Configs",
   "stardustindustry.configuration.section.stardustindustry.common.toml": "Stardust Industry Configs",

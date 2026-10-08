@@ -94,10 +94,10 @@
   "jei.stardustindustry.category.crushing": "破碎",
   "jei.stardustindustry.chance": "产出概率：%s%%",
 
-  "tier.stardustindustry.lv": "低压",
-  "tier.stardustindustry.mv": "中压",
-  "tier.stardustindustry.hv": "高压",
-  "tier.stardustindustry.ehv": "超高压",
+  "tier.stardustindustry.lv": "LV",
+  "tier.stardustindustry.mv": "MV",
+  "tier.stardustindustry.hv": "HV",
+  "tier.stardustindustry.ehv": "EHV",
 
   "stardustindustry.configuration.title": "星砾工业配置",
   "stardustindustry.configuration.section.stardustindustry.common.toml": "星砾工业配置",

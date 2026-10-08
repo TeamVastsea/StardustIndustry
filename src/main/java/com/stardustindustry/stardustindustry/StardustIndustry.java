@@ -56,6 +56,9 @@ public class StardustIndustry {
 
         // Register ourselves for server and other game events we are interested in.
         NeoForge.EVENT_BUS.register(this);
+        // Fluid ports swallow a held bucket's right-click before the bucket can
+        // empty itself onto the ground.
+        NeoForge.EVENT_BUS.register(com.stardustindustry.stardustindustry.machine.PortFluidInteraction.class);
 
         // Add this mod's content to its creative tab.
         modEventBus.addListener(this::addCreative);

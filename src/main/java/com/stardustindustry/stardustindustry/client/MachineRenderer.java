@@ -80,18 +80,22 @@ public class MachineRenderer implements BlockEntityRenderer<MachineBlockEntity> 
     private void renderProjection(MachineBlockEntity machine, PoseStack pose,
                                   MultiBufferSource buffers, int packedLight, int packedOverlay) {
         Level level = machine.getLevel();
-        for (ClientFailure failure : machine.clientFailures()) {
-            // Only draw where there is room to place something. A failure pinned
-            // to the controller or to an existing block would be a ghost buried
-            // inside opaque geometry, invisible and misleading; the label below
-            // covers those cases with words instead.
-            if (level != null && !level.getBlockState(failure.worldPos()).isAir()) {
-                continue;
+        // A dynamic machine has no authored layout, so there is no correct block
+        // to ghost; it shows only the status label.
+        if (machine.supportsProjection()) {
+            for (ClientFailure failure : machine.clientFailures()) {
+                // Only draw where there is room to place something. A failure pinned
+                // to the controller or to an existing block would be a ghost buried
+                // inside opaque geometry, invisible and misleading; the label below
+                // covers those cases with words instead.
+                if (level != null && !level.getBlockState(failure.worldPos()).isAir()) {
+                    continue;
+                }
+                BlockState ghost = ghostState(failure.colourGroup());
+                offsetTo(machine, failure.worldPos(), pose);
+                blockRenderer.renderSingleBlock(ghost, pose, buffers, packedLight, packedOverlay);
+                pose.popPose();
             }
-            BlockState ghost = ghostState(failure.colourGroup());
-            offsetTo(machine, failure.worldPos(), pose);
-            blockRenderer.renderSingleBlock(ghost, pose, buffers, packedLight, packedOverlay);
-            pose.popPose();
         }
 
         renderStatusLabel(machine, pose, buffers, packedLight);

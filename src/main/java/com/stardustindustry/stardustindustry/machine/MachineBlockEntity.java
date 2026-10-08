@@ -313,6 +313,20 @@ public abstract class MachineBlockEntity extends BlockEntity {
     }
 
     /**
+     * Whether an unformed machine should draw projection ghost blocks.
+     *
+     * <p>A fixed-shape machine is authored cell by cell, so a missing cell can be
+     * shown as a ghost of exactly the block that belongs there. A dynamic machine
+     * has no authored layout — the player builds whatever box they like — so
+     * there is no single correct block to ghost, and drawing one would be a lie.
+     * Those machines override this to {@code false}; the floating text that says
+     * what is wrong is still shown.</p>
+     */
+    public boolean supportsProjection() {
+        return true;
+    }
+
+    /**
      * The size of the machine's evaluated box, as {@code [x, y, z]}, or an empty
      * array when nothing has been evaluated. Derived from the roles the last
      * evaluation recorded, so it works for both static and dynamic machines

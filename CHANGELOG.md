@@ -28,7 +28,22 @@
   「多方块结构已成型！（亮黄）／多方块尺寸／多方块结构／储罐容积（B）／存储流体（中英双语）／
   已安装端口／最大传输速率」，面板改为浅灰底 + 深色字，储罐不再显示无意义的等级/速度行，
   也不提供拆除按钮。快照新增 `MachineParamsData.TankParams`（服务端附带，普通机器为 `null`）。
+- **等级一律显示 LV/MV/HV/EHV**：`tier.stardustindustry.*` 中英均改为缩写
+  （此前中文为「低压/中压/…」）。所有端口（含流体端口）统一用该模式。
 - **流体端口支持手桶交互**：手持容器右击流体端口可灌入 / 取出流体。
+
+### 修复
+- **钢化玻璃不透明**：`tank_glass` 模型未声明渲染层，被当作实心渲染，
+  导致看不到内部液位。模型加上 `"render_type": "minecraft:translucent"`。
+- **水桶灌不进储罐**：水桶在自己的 `BucketItem.useOn` 里先把水倒进世界，
+  抢在方块 `useItemOn` 之前。改由 `PlayerInteractEvent.RightClickBlock` 事件抢先拦截
+  （`PortFluidInteraction`），命中流体端口即转移流体并取消事件。
+- **WTHIT 插件加载报错**：`waila_plugins.json` 用了旧格式（顶层直接写 `initializer`），
+  被 WTHIT 当作旧接口 `IWailaPlugin` 实例化而抛 `ClassCastException`。
+  改为现代格式（`entrypoints.client`）。
+- **动态结构不再画投影幽灵块**：储罐形状由玩家自定，没有唯一正确方块可作幽灵；
+  `MachineBlockEntity.supportsProjection()` 默认 `true`，储罐覆写为 `false`，
+  未成型时仍显示浮动文字提示。（沉浸式投影留待后续统一实现。）
 
 ### 新增
 - **真正的动态储罐多方块**：新增 `tank_frame`（12 条棱）、`tank_shell`（6 个面，其中一块承载方块实体，作为锚点与控制器）、`tank_glass`（透光面）。

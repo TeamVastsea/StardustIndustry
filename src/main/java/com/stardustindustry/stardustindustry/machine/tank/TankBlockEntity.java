@@ -64,6 +64,18 @@ public class TankBlockEntity extends MachineBlockEntity {
         return TankStructureProvider.INSTANCE;
     }
 
+    /**
+     * A tank draws no projection ghosts.
+     *
+     * <p>Its shape is whatever box the player is building, so there is no single
+     * block a ghost could correctly represent; the floating text still reports
+     * the first thing that is wrong.</p>
+     */
+    @Override
+    public boolean supportsProjection() {
+        return false;
+    }
+
     public FluidBufferModule fluid() {
         return fluid;
     }
