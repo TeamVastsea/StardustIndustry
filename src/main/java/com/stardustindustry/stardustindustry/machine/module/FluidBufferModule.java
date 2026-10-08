@@ -280,9 +280,15 @@ public final class FluidBufferModule implements MachineModule, ModuleHost.Resour
 
     @Override
     public void save(CompoundTag tag, HolderLookup.Provider registries) {
-        CompoundTag fluid = new CompoundTag();
-        tank.getFluid().save(registries, fluid);
-        tag.put("Fluid", fluid);
+        // An empty tank writes no fluid key at all. FluidStack.save refuses to
+        // encode an empty stack in 1.21.1, and every block entity gets saved on
+        // its first sync-to-client, so a freshly placed tank with nothing in it
+        // would otherwise crash the whole server tick.
+        if (!tank.getFluid().isEmpty()) {
+            CompoundTag fluid = new CompoundTag();
+            tank.getFluid().save(registries, fluid);
+            tag.put("Fluid", fluid);
+        }
     }
 
     @Override
