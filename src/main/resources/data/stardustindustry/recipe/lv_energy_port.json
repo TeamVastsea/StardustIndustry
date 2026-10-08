@@ -2,12 +2,12 @@
   "type": "minecraft:crafting_shaped",
   "category": "misc",
   "pattern": [
-    " B ",
-    "BPB",
-    " B "
+    " R ",
+    "RBR",
+    " R "
   ],
   "key": {
-    "P": { "item": "stardustindustry:energy_port" },
+    "R": { "tag": "c:ingots/gold" },
     "B": { "item": "stardustindustry:lv_base" }
   },
   "result": {

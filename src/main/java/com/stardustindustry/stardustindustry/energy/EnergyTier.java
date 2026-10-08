@@ -18,24 +18,26 @@ import net.minecraft.util.StringRepresentable;
  */
 public enum EnergyTier implements StringRepresentable {
     /** Low voltage: the entry tier, hand-fed generators and starter machines. */
-    LV("lv", 32, 1, 64),
+    LV("lv", 32, 1, 64, 5_000),
     /** Medium voltage: the workhorse tier for small processing lines. */
-    MV("mv", 128, 2, 1_024),
+    MV("mv", 128, 2, 1_024, 20_000),
     /** High voltage: bulk ore processing and first real power plants. */
-    HV("hv", 512, 4, 8_192),
+    HV("hv", 512, 4, 8_192, 80_000),
     /** Extreme high voltage: nuclear output and long-distance transmission. */
-    EHV("ehv", 2_048, 8, 65_536);
+    EHV("ehv", 2_048, 8, 65_536, 320_000);
 
     private final String name;
     private final int voltage;
     private final int maxAmperage;
     private final int maxBuffer;
+    private final int fluidTransfer;
 
-    EnergyTier(String name, int voltage, int maxAmperage, int maxBuffer) {
+    EnergyTier(String name, int voltage, int maxAmperage, int maxBuffer, int fluidTransfer) {
         this.name = name;
         this.voltage = voltage;
         this.maxAmperage = maxAmperage;
         this.maxBuffer = maxBuffer;
+        this.fluidTransfer = fluidTransfer;
     }
 
     /** Canonical lowercase name, used for translation keys and serialisation. */
@@ -67,14 +69,15 @@ public enum EnergyTier implements StringRepresentable {
     /**
      * The throughput, in mB/t, a fluid port of this tier is rated for.
      *
-     * <p>Fluid rates deliberately follow a gentler curve than energy: a tank's
-     * ports are about how quickly a pipe can empty a vessel, and an EHV port is
-     * already fast enough to matter without the number running away. The value
-     * scales with the tier's voltage so the ordering always matches the voltage
-     * ordering, which is what a player expects when they upgrade a port.</p>
+     * <p>Fluid rates follow their own ladder rather than the energy one: each
+     * tier is four times the last, so a port upgrade is a clear step (5, 20, 80
+     * and 320 buckets <em>per tick</em>). The numbers are stored on the tier
+     * rather than derived from voltage because the two ladders are deliberately
+     * independent — being four times faster is a fluid decision, not an
+     * electrical one.</p>
      */
     public int fluidTransfer() {
-        return voltage * maxAmperage * 2;
+        return fluidTransfer;
     }
 
     /** True when {@code incoming} may be carried directly by a connection of this tier. */

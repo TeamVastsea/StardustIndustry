@@ -40,17 +40,14 @@ public class TankJadePlugin implements IWailaPlugin {
     public void registerClient(IWailaClientRegistration registration) {
         TankComponentProvider provider = new TankComponentProvider();
 
-        // Register on the concrete classes rather than sharing a base type: the
-        // three tank parts have no common superclass beyond Block, and hooking
-        // every block in the game just to filter most of them out would add a
-        // call per hovered block for no reason.
-        registration.registerBlockComponent(provider, com.stardustindustry.stardustindustry.machine.tank.TankShellBlock.class);
-        registration.registerBlockComponent(provider, com.stardustindustry.stardustindustry.machine.tank.TankFrameBlock.class);
-        registration.registerBlockComponent(provider, com.stardustindustry.stardustindustry.machine.tank.TankGlassBlock.class);
-        // Fluid ports are tank blocks too — the player may point at one and
-        // expect the same readout. The provider filters to fluid ports itself,
-        // since MachinePortBlock is shared with item and energy ports.
-        registration.registerBlockComponent(provider, com.stardustindustry.stardustindustry.machine.MachinePortBlock.class);
+        // Register on Block rather than on each tank class. Jade resolves a
+        // component provider by the exact block class it was registered with,
+        // and the fluid port is a MachinePortBlock shared with the item and
+        // energy ports — so a per-class registration either misses a part or
+        // pulls in every port. Hooking Block once and filtering inside keeps the
+        // port, frame, shell and glass on one identical path, which is also how
+        // the WTHIT plugin is attached.
+        registration.registerBlockComponent(provider, Block.class);
     }
 
     /** Appends the tank's size, contents and capacity to Jade's tooltip. */

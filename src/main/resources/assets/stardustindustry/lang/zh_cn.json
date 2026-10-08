@@ -51,7 +51,7 @@
   "screen.stardustindustry.machine_params.vessel.ports.none": "无",
   "screen.stardustindustry.machine_params.vessel.port_entry": "%s流体端口 x%s",
   "screen.stardustindustry.machine_params.vessel.max_rate": "最大传输速率：%s",
-  "screen.stardustindustry.machine_params.vessel.rate_entry": "%s %sB/s",
+  "screen.stardustindustry.machine_params.vessel.rate_entry": "%s %sB/t",
 
   "structure.stardustindustry.tank": "储罐",
 

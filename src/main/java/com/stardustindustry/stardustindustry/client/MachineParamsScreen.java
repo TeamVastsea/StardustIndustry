@@ -190,17 +190,17 @@ public class MachineParamsScreen extends AbstractContainerScreen<MachineParamsMe
     }
 
     /**
-     * The fastest port, as {@code "LV 5B/s"}. The stored rate is mB per tick, so
-     * it is converted to buckets per second for display.
+     * The fastest port, as {@code "LV 5B/t"}. The stored rate is already in mB
+     * per tick, so it is only converted to whole buckets: 5000 mB/t is 5 B/t.
      */
     private Component maxRate(MachineParamsData.TankParams tank) {
         if (tank.maxRateTier().isEmpty()) {
             return Component.translatable("screen.stardustindustry.machine_params.vessel.ports.none");
         }
-        double bucketsPerSecond = tank.maxRateMbPerTick() * 20.0 / 1000.0;
-        String rate = bucketsPerSecond == Math.floor(bucketsPerSecond)
-                ? Long.toString((long) bucketsPerSecond)
-                : String.format("%.2f", bucketsPerSecond);
+        double bucketsPerTick = tank.maxRateMbPerTick() / 1000.0;
+        String rate = bucketsPerTick == Math.floor(bucketsPerTick)
+                ? Long.toString((long) bucketsPerTick)
+                : String.format("%.2f", bucketsPerTick);
         return Component.translatable("screen.stardustindustry.machine_params.vessel.rate_entry",
                 Component.translatable("tier.stardustindustry." + tank.maxRateTier()).getString(),
                 rate);

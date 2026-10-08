@@ -51,7 +51,7 @@
   "screen.stardustindustry.machine_params.vessel.ports.none": "None",
   "screen.stardustindustry.machine_params.vessel.port_entry": "%s fluid port x%s",
   "screen.stardustindustry.machine_params.vessel.max_rate": "Maximum transfer rate: %s",
-  "screen.stardustindustry.machine_params.vessel.rate_entry": "%s %sB/s",
+  "screen.stardustindustry.machine_params.vessel.rate_entry": "%s %sB/t",
 
   "structure.stardustindustry.tank": "Tank",
 

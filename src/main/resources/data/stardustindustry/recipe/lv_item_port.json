@@ -2,12 +2,12 @@
   "type": "minecraft:crafting_shaped",
   "category": "misc",
   "pattern": [
-    " B ",
-    "BPB",
-    " B "
+    " I ",
+    "IBI",
+    " I "
   ],
   "key": {
-    "P": { "item": "stardustindustry:item_port" },
+    "I": { "tag": "c:ingots/steel" },
     "B": { "item": "stardustindustry:lv_base" }
   },
   "result": {

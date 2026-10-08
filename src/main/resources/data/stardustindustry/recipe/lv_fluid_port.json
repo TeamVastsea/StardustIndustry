@@ -2,12 +2,12 @@
   "type": "minecraft:crafting_shaped",
   "category": "misc",
   "pattern": [
-    " B ",
-    "BPB",
-    " B "
+    " G ",
+    "GBG",
+    " G "
   ],
   "key": {
-    "P": { "item": "stardustindustry:fluid_port" },
+    "G": { "tag": "c:glass_blocks" },
     "B": { "item": "stardustindustry:lv_base" }
   },
   "result": {
