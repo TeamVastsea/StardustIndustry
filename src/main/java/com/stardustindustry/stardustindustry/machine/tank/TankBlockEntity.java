@@ -106,6 +106,11 @@ public class TankBlockEntity extends MachineBlockEntity {
         return syncedMax;
     }
 
+    /** The capacity last shipped to the client, in mB, for the renderer's diagnostics. */
+    public int syncedCapacityMb() {
+        return syncedCapacityMb;
+    }
+
     /**
      * Announces a newly formed tank, since the player built it without pressing
      * anything and otherwise gets no confirmation that it worked.

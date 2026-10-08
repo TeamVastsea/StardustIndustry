@@ -148,18 +148,16 @@ dependencies {
     // mechanism (a @WailaPlugin annotation for Jade/WTHIT, an IMC message for
     // TOP) and only loads when that mod is present.
     //
-    // They are also localRuntime so the dev client has all three running and
-    // the tooltips can be tested without hand-copying jars into run/client/mods.
+    // At runtime the dev client runs a SINGLE highlight mod — The One Probe —
+    // so a tooltip is tested in the same configuration players will use, and so
+    // three highlight mods cannot interfere with one another. Jade and WTHIT are
+    // compiled against but not launched; their plugins are verified with the
+    // release jar in a pack that ships that one mod.
     compileOnly "localLibs:jade-1.21.1-neoforge-15.10.6:"
     compileOnly "localLibs:wthit-1.21.1-neo-12.10.2:"
     compileOnly "localLibs:theoneprobe-1.21-neo-12.0.8:"
 
-    localRuntime "localLibs:jade-1.21.1-neoforge-15.10.6:"
-    localRuntime "localLibs:wthit-1.21.1-neo-12.10.2:"
     localRuntime "localLibs:theoneprobe-1.21-neo-12.0.8:"
-    // WTHIT hard-requires Bad Packets; it is only a runtime companion of WTHIT
-    // (nothing in our source references it), so it never needs a compile jar.
-    localRuntime "localLibs:badpackets-neo-0.8.2:"
 
     // Example mod dependency using a mod jar from ./libs with a flat dir repository
     // This maps to ./libs/coolmod-${mc_version}-${coolmod_version}.jar

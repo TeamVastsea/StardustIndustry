@@ -177,6 +177,30 @@ public class MachineRenderer implements BlockEntityRenderer<MachineBlockEntity> 
         return true;
     }
 
+    /**
+     * Expands the renderer's bounds beyond its own cell.
+     *
+     * <p>One cell is the default, but this renderer draws far more than the block
+     * it is attached to: a tank's fluid box and a large machine's redrawn body
+     * both extend across the structure. With the default bound, all of that is
+     * culled the moment the single controller cell leaves the frustum, which is
+     * why a tank's fluid could vanish while its glass was still on screen. The
+     * bound is grown from the last evaluated box so the extra geometry is kept
+     * whenever any part of the machine is visible.</p>
+     */
+    @Override
+    public net.minecraft.world.phys.AABB getRenderBoundingBox(MachineBlockEntity machine) {
+        BlockPos origin = machine.getBlockPos();
+        int[] size = machine.evaluatedSize();
+        if (size.length == 3) {
+            // Cover the whole machine generously, in both directions, so the
+            // controller need not be the corner nearest the camera.
+            return new net.minecraft.world.phys.AABB(origin).inflate(
+                    Math.max(size[0], 1) + 1.0, Math.max(size[1], 1) + 1.0, Math.max(size[2], 1) + 1.0);
+        }
+        return new net.minecraft.world.phys.AABB(origin).inflate(2.0);
+    }
+
     @Override
     public int getViewDistance() {
         return 96;

@@ -81,7 +81,8 @@ public final class TankTopPlugin {
 
         /**
          * Finds the tank from the probed block, falling back to the shared
-         * lookup when the block is a frame or glass cell with no block entity.
+         * lookup for a frame, glass or port cell whose own block entity is not
+         * the tank itself.
          */
         private static TankBlockEntity resolve(Level level, BlockState state, IProbeHitData data) {
             if (level.getBlockEntity(data.getPos()) instanceof TankBlockEntity tank) {
@@ -90,7 +91,8 @@ public final class TankTopPlugin {
             Block block = state.getBlock();
             if (block != ModBlocks.TANK_FRAME.get()
                     && block != ModBlocks.TANK_SHELL.get()
-                    && block != ModBlocks.TANK_GLASS.get()) {
+                    && block != ModBlocks.TANK_GLASS.get()
+                    && block != ModBlocks.LV_FLUID_PORT.get()) {
                 return null;
             }
             return TankHudAccess.findTank(level, data.getPos());

@@ -72,10 +72,16 @@
 
 本项目对三个高亮模组都提供兼容插件（Jade / WTHIT / TOP），它们是 **可选软依赖**：
 
-- 编译期：`libs/` 下的 jar 以 `compileOnly` + `localRuntime` 接入，
+- 编译期：`libs/` 下的 jar 以 `compileOnly` 接入（Jade / WTHIT / TOP 三个都编译），
   由 `scripts/fetch-hud-libs.sh`（CI）与 `scripts/fetch-hud-libs.ps1`（本地）在构建前下载。
-- 运行期：`libs/` 被 git 忽略，不进仓库；开发客户端在 `run/client/mods` 放哪个高亮就测哪个。
-  本地整合包**只保留 TOP 一个**。
+- 运行期：**开发客户端只运行 The One Probe 一个高亮模组**（`localRuntime` 只挂 TOP）。
+  这样调试时的工具提示与玩家实际使用一致，也避免多个高亮相互干扰。
+  Jade / WTHIT 仅编译期参与，其插件用「只装该模组」的整合包单独验证。
+- `libs/` 被 git 忽略，不进仓库。
+
+> **为什么不同时挂三个高亮**：WTHIT 与 Jade 同时存在时，WTHIT 的
+> `IClientApiService` 会因服务加载器冲突在进入世界后崩溃
+> （`ServiceConfigurationError ... not a subtype`）。开发环境只保留 TOP 可完全避开。
 
 各插件的配置翻译键（避免 Jade 因缺少键而断言）：
 

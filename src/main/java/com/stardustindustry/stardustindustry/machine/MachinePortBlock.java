@@ -94,29 +94,22 @@ public class MachinePortBlock extends Block implements EntityBlock {
     }
 
     /**
-     * Lets a player move fluid through a fluid port by hand.
+     * A fluid port's right-click is handled entirely by
+     * {@code PortFluidInteraction}, which runs earlier, at the
+     * {@code PlayerInteractEvent.RightClickBlock} stage.
      *
-     * <p>A right-click with a filled bucket or a fluid container pours into the
-     * machine, and a right-click with an empty one draws from it, which is what
-     * a player reaches for before any pipes exist. The work is delegated to
-     * NeoForge's fluid handler interaction so bucket, bottle and any other
-     * container a mod adds all behave the same, and so the exact amount and the
-     * resulting stack are the platform's problem rather than this block's.</p>
-     *
-     * <p>Only fluid ports take part. An item or energy port passes, leaving the
-     * click for whatever the held item would otherwise do.</p>
+     * <p>There is deliberately <em>no</em> fluid handling here. A second handler
+     * at this stage would race the event one: the event cancels the click, but
+     * whenever it decided there was nothing to move it released the click, and
+     * this method would then run a <em>second</em> transfer through the port's
+     * rate-capped capability. That cap is tuned for a pipe moving a little each
+     * tick, so the hand path would look unpredictably slow, and two handlers
+     * writing the same tank is how a fluid can appear to be replaced. One
+     * handler, one place to reason about.</p>
      */
     @Override
     protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level, BlockPos pos,
                                               Player player, InteractionHand hand, BlockHitResult hit) {
-        if (role != PartRole.PORT_FLUID) {
-            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
-        }
-        // A port that is not bound to a machine exposes no fluid handler, and the
-        // helper simply reports that nothing happened.
-        if (net.neoforged.neoforge.fluids.FluidUtil.interactWithFluidHandler(player, hand, level, pos, hit.getDirection())) {
-            return ItemInteractionResult.sidedSuccess(level.isClientSide());
-        }
         return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
     }
 

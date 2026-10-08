@@ -17,16 +17,20 @@ import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 import net.neoforged.neoforge.fluids.capability.IFluidHandlerItem;
 
 /**
- * Intercepts a right-click on a fluid port so a held bucket pours into the
- * machine instead of the world.
+ * Handles a right-click on a fluid port, moving fluid between the held container
+ * and the machine the port serves.
  *
  * <h2>Why an event and not the block</h2>
  * A bucket handles its own right-click in {@code BucketItem.useOn}, which runs
  * <em>before</em> the block's {@code useItemOn} and, on a placeable spot, empties
  * itself onto the ground before the block is ever asked. A block therefore cannot
  * win this race on its own. {@link PlayerInteractEvent.RightClickBlock} fires
- * ahead of both, so the same interaction can be claimed here and the event
- * cancelled, which stops the vanilla placement.
+ * ahead of both, so the interaction is claimed here and the event cancelled,
+ * which stops the vanilla placement.
+ *
+ * <p>This is the <b>only</b> hand-transfer path. The port block deliberately does
+ * no fluid work of its own, so there is no second handler to race or to disagree
+ * with this one.
  *
  * <h2>Why the machine's own handler, not the port's</h2>
  * The port's capability caps every operation at its rated throughput — 5000 mB
@@ -39,8 +43,12 @@ import net.neoforged.neoforge.fluids.capability.IFluidHandlerItem;
  * <h2>Containers of any size</h2>
  * The transfer asks the held item for its own fluid handler and moves whatever
  * that handler will give or take, so it works for a vanilla bucket (1000 mB), a
- * large drum (many buckets) and a sub-bucket vial (500 mB) without special
- * cases.
+ * large drum (many buckets) and a sub-bucket vial (500 mB) without special cases.
+ *
+ * <h2>One fluid only</h2>
+ * A tank holds a single fluid. A container of a different fluid is refused and
+ * the click is still consumed, so a right-click on a port with the wrong fluid
+ * does nothing at all rather than pouring it into the world.
  *
  * <h2>Creative debug transfer</h2>
  * Sneaking turns the click into a debug action: the machine gains or loses one
@@ -72,11 +80,8 @@ public final class PortFluidInteraction {
             return;
         }
 
-        // Only a fluid container (bucket, drum, vial, …) takes part. Without
-        // this a tool such as the installation tool would still be examined and
-        // its right-click swallowed on a port, which has nothing to do with
-        // transferring fluid. The copy-with-count lets a stacked container be
-        // handled one item at a time.
+        // Only a fluid container (bucket, drum, vial, …) takes part. A copy with
+        // count one lets a stacked container be handled one item at a time.
         IFluidHandlerItem container = FluidUtil.getFluidHandler(held.copyWithCount(1)).orElse(null);
         if (container == null) {
             return;
@@ -97,31 +102,33 @@ public final class PortFluidInteraction {
         }
         IFluidHandler handler = fluid.capability();
 
-        // The transfer only runs on the server. Running it on the client too
-        // would be a prediction that the server then contradicts, and it is what
-        // let the client's own view of the held bucket diverge; keeping the
-        // authoritative side alone avoids any world-visible artefact.
+        // The click belongs to the port from here on, whatever it does: a
+        // recognised fluid container on a bound fluid port is this handler's
+        // business. That is what keeps a refused transfer (a fluid the tank does
+        // not hold) from falling through to the bucket and emptying into the
+        // world, and what keeps the port's own block from acting twice.
         boolean creativeDebug = player.isCreative() && player.isShiftKeyDown();
         if (!level.isClientSide()) {
             if (creativeDebug) {
                 debugTransfer(container, handler);
             } else {
                 ItemStack result = containerTransfer(container, handler);
-                if (result == null) {
-                    // Nothing moved, so fall through to normal block behaviour
-                    // rather than swallowing the click.
-                    return;
+                if (result != null) {
+                    // The item is consumed one at a time and replaced by whatever
+                    // the container becomes (full bucket -> empty bucket and vice
+                    // versa), so the remainder of a stack is preserved.
+                    held.shrink(1);
+                    if (held.isEmpty()) {
+                        player.setItemInHand(hand, result);
+                    } else if (!player.getInventory().add(result)) {
+                        player.drop(result, false);
+                    }
                 }
-                // The item is consumed one at a time and replaced by whatever
-                // the container becomes (full bucket -> empty bucket and vice
-                // versa), so the remainder of a stack is preserved.
-                held.shrink(1);
-                if (held.isEmpty()) {
-                    player.setItemInHand(hand, result);
-                } else if (!player.getInventory().add(result)) {
-                    player.drop(result, false);
-                }
+                // result == null means nothing moved (a different fluid, or the
+                // tank already full of this one): fall through to cancelling
+                // below, so the click is swallowed and the container is untouched.
             }
+            machine.setChanged();
         }
 
         // Stop the bucket from also emptying itself into the world. Cancelling

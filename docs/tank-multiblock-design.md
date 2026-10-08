@@ -330,7 +330,11 @@ public record TankHudData(
 - 运行期：**可选**——不安装高亮模组时储罐功能完全不受影响。
 - `neoforge.mods.toml`：为各高亮模组声明 **optional 依赖**，便于日志与依赖管理，
   但**不强制**。
-- 开发环境：把对应高亮模组 jar 放入 `run/*/mods` 以实测各插件（与 MetalAddon 相同流程）。
+- 开发环境：`localRuntime` **只挂 The One Probe 一个高亮模组**（`build.gradle`）。
+  Jade / WTHIT 仅编译期参与。这是刻意为之：WTHIT 与 Jade 同处一个 classpath 时，
+  WTHIT 的 `IClientApiService` 服务加载器会发生冲突
+  （`ServiceConfigurationError: ClientApiService not a subtype`），进入世界即崩溃。
+  要验证 Jade / WTHIT 插件，用一个只装该模组的整合包单独跑。
 - 与 JEI 一致：走 `compat/` 目录 + 独立的 `IBlockComponentProvider` / 插件注册，
   保持主代码零依赖。
 
@@ -430,8 +434,24 @@ public record TankHudData(
 - [x] **T1.20 流体同步客户端**：`FluidBufferModule` 内容变化时改为
       `MachineBlockEntity.markContentsChanged()`（`setChanged` + `sendBlockUpdated`），
       修复读客户端缓存的高亮模组（WTHIT）仍显示「空」的问题。
+      **根因修复**：`FluidBufferModule.save` 曾把流体写进一个新建的 `CompoundTag` 再
+      `put("Fluid", …)`，但 `FluidStack.save` 是**返回**编码后的 tag 而**不写入**传入的
+      tag，导致服务端有液、客户端解析出的 `Fluid` 子 tag 恒为空（日志 `hasFluidKey=true`
+      但 `amount=0`）。改为 `tag.put("Fluid", stack.save(registries))` 用返回值。
 - [x] **T1.21 玻璃透光**：`tank_glass` 模型补 `"render_type": "minecraft:translucent"`，
       使内部液位可见。
+- [x] **T1.23 液面渲染（匠魂风格）**：`TankLiquidRenderer` 把内部流体直接渲染为**实体盒子**，
+      从底部到当前液位，玻璃处一眼可见「是什么流体、大概多少」。
+      - **每格一个面片**、每片贴一张完整流体贴图：此前用单个面片把 UV 拉伸到整个面，
+        采样越界到图集相邻像素，表现为**黑白条纹**。
+      - 用 `RenderType.translucent()` 且 alpha 下限 `0.80`：既不透明得像颜料、又保持色泽。
+      - `MachineRenderer.getRenderBoundingBox` 扩大到整个机器：否则控制器单格离开视锥时
+        内部流体被整体剔除，玻璃仍可见但流体消失。
+- [x] **T1.24 流体发黑（光照根因）**：渲染器拿到的是**控制器格子**的光照值，而控制器是外壳
+      面板，储罐封闭后既无天光也无块光，光照接近 0，流体因此渲染成**黑色**；开夜视后片段被
+      提亮才显示正常（这正是「开夜视就对了」的原因）。修复：`TankLiquidRenderer` 改为采样
+      **内腔中心**的天光/块光（`LightLayer.SKY/BLOCK`），并设下限（块光 ≥4、天光 ≥6），
+      使暗室中的储罐也能看清液体而不是一团黑。
 - [x] **T1.22 删除无等级端口**：移除 `item_port`/`fluid_port`/`energy_port` 及其资源，
       端口一律带等级前缀（当前仅 LV，MV/HV/EHV 按同模式扩展）。
 - [ ] **T1.15 美术资源替换**：按 `docs/textures-placeholder-manual.md` 替换全部占位贴图。

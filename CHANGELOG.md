@@ -51,10 +51,29 @@
 ### 修复
 - **钢化玻璃不透明**：`tank_glass` 模型未声明渲染层，被当作实心渲染，
   导致看不到内部液位。模型加上 `"render_type": "minecraft:translucent"`。
+- **储罐液体一直不显示（根因）**：`FluidBufferModule.save` 把 `FluidStack.save` 的
+  **返回值**丢弃，而 `FluidStack.save(provider, prefix)` 是**返回**编码后的 tag、
+  **不写入**传入的 tag，导致服务端有液、客户端收到的 `Fluid` 子 tag 恒为空
+  （`hasFluidKey=true` 但 `amount=0`）。改为 `tag.put("Fluid", stack.save(registries))`。
+- **储罐液体发黑**：`TankLiquidRenderer` 原本用渲染器收到的**控制器格子**光照值，
+  而控制器是外壳面板、储罐封闭后无天光无块光，光照接近 0 → 液体渲染为黑色；开夜视后片段
+  被提亮才看似正常。改为采样**内腔中心**的 `LightLayer.SKY/BLOCK` 并设亮度下限。
+- **储罐液体黑白条纹 / 颜色极淡**：`TankLiquidRenderer` 此前用一个面片把流体贴图 UV
+  拉伸到整个面，采样越界到图集相邻像素（黑/白条纹），且透明度过低。改为**每格一个
+  面片、每片贴一张完整贴图**，用 `RenderType.translucent()`、alpha 下限 `0.80`。
+- **储罐液体被整体剔除**：`MachineRenderer` 未覆写 `getRenderBoundingBox`，默认只有
+  控制器一格，控制器离开视锥时内部流体被剔除。现已扩大到整个机器。
+- **WTHIT 与 Jade 同装崩溃**：开发环境 `localRuntime` 只保留 TOP；Jade / WTHIT
+  仅 `compileOnly`。二者同时存在时 WTHIT 的 `IClientApiService` 服务加载冲突
+  （`ServiceConfigurationError`），进入世界即崩。
 - **水桶灌不进储罐**：水桶在自己的 `BucketItem.useOn` 里先把水倒进世界，
   抢在方块 `useItemOn` 之前。改由 `PlayerInteractEvent.RightClickBlock` 事件抢先拦截
   （`PortFluidInteraction`，显式取 `IFluidHandler` 能力后调用 `FluidUtil`），
   命中流体端口即转移流体并取消事件。
+- **不同流体顶掉原流体**：端口手桶交互与 `MachinePortBlock.useItemOn` 原本是两套处理器，
+  事件路径没转移成功时会落到第二套限流能力路径，造成看似顶替/缓慢。现在**只有一个手桶
+  路径**（`PortFluidInteraction`），并在 `FluidBufferModule` 显式拒绝与已存流体不同的
+  流体（管道 / 端口 / 调试均一致）。
 - **流体变化不同步到客户端**：`FluidBufferModule` 灌入/抽出时只 `setChanged()`（仅存盘），
   导致 WTHIT 等读客户端缓存的显示仍为「空」。新增
   `MachineBlockEntity.markContentsChanged()`（`setChanged` + `sendBlockUpdated`）并在模块中调用。

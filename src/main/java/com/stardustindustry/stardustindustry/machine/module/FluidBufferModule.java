@@ -174,6 +174,14 @@ public final class FluidBufferModule implements MachineModule, ModuleHost.Resour
         if (resource.isEmpty()) {
             return 0;
         }
+        // A tank holds one fluid at a time. Refuse anything else outright rather
+        // than relying on the backing tank's own guard: an explicit check here
+        // keeps the rule visible and guarantees every entry point (bucket, pipe,
+        // port, debug) behaves identically.
+        if (!tank.getFluid().isEmpty()
+                && !FluidStack.isSameFluidSameComponents(tank.getFluid(), resource)) {
+            return 0;
+        }
         FluidStack offered = resource.getAmount() > maxTransfer
                 ? resource.copyWithAmount(maxTransfer)
                 : resource;
@@ -252,7 +260,10 @@ public final class FluidBufferModule implements MachineModule, ModuleHost.Resour
 
             @Override
             public boolean isFluidValid(int tank, FluidStack stack) {
-                return true;
+                // One fluid per tank: anything other than what is already held is
+                // not valid, which lets a pipe see the rule before it tries.
+                return FluidBufferModule.this.fluid().isEmpty()
+                        || FluidStack.isSameFluidSameComponents(FluidBufferModule.this.fluid(), stack);
             }
 
             @Override
@@ -286,10 +297,12 @@ public final class FluidBufferModule implements MachineModule, ModuleHost.Resour
         // encode an empty stack in 1.21.1, and every block entity gets saved on
         // its first sync-to-client, so a freshly placed tank with nothing in it
         // would otherwise crash the whole server tick.
+        //
+        // The encoded tag is the RETURN value of save: it encodes into a new tag
+        // and does not necessarily write into the one passed in. Storing the
+        // passed-in tag instead is how a full tank reached the client as empty.
         if (!tank.getFluid().isEmpty()) {
-            CompoundTag fluid = new CompoundTag();
-            tank.getFluid().save(registries, fluid);
-            tag.put("Fluid", fluid);
+            tag.put("Fluid", tank.getFluid().save(registries));
         }
     }
 
