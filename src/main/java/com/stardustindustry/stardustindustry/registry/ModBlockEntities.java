@@ -30,15 +30,24 @@ public final class ModBlockEntities {
 
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<ItemPortBlockEntity>> ITEM_PORT =
             BLOCK_ENTITIES.register("item_port",
-                    () -> BlockEntityType.Builder.of(ItemPortBlockEntity::new, ModBlocks.ITEM_PORT.get()).build(null));
+                    () -> BlockEntityType.Builder.of(ItemPortBlockEntity::new,
+                            ModBlocks.ITEM_PORT.get(),
+                            ModBlocks.LV_ITEM_PORT.get()).build(null));
 
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<FluidPortBlockEntity>> FLUID_PORT =
             BLOCK_ENTITIES.register("fluid_port",
-                    () -> BlockEntityType.Builder.of(FluidPortBlockEntity::new, ModBlocks.FLUID_PORT.get()).build(null));
+                    () -> BlockEntityType.Builder.of(FluidPortBlockEntity::new,
+                            ModBlocks.FLUID_PORT.get(),
+                            // The tank's fluid ports are the same kind of port as
+                            // the machine's, differing only in throughput, so
+                            // each tier's port shares this one type.
+                            ModBlocks.LV_FLUID_PORT.get()).build(null));
 
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<EnergyPortBlockEntity>> ENERGY_PORT =
             BLOCK_ENTITIES.register("energy_port",
-                    () -> BlockEntityType.Builder.of(EnergyPortBlockEntity::new, ModBlocks.ENERGY_PORT.get()).build(null));
+                    () -> BlockEntityType.Builder.of(EnergyPortBlockEntity::new,
+                            ModBlocks.ENERGY_PORT.get(),
+                            ModBlocks.LV_ENERGY_PORT.get()).build(null));
 
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<com.stardustindustry.stardustindustry.machine.InvisibleStructureBlockEntity>> INVISIBLE_STRUCTURE =
             BLOCK_ENTITIES.register("invisible_structure",
@@ -65,9 +74,18 @@ public final class ModBlockEntities {
      * available, which is called from the mod constructor.</p>
      */
     public static void wirePorts() {
+        // Each port type is shared by the untiered block and every tiered
+        // variant of the same role; both must be wired, or the first placement
+        // of an unwired one throws inside newBlockEntity.
         ModBlocks.ITEM_PORT.get().withBlockEntityType(ITEM_PORT.get());
+        ModBlocks.LV_ITEM_PORT.get().withBlockEntityType(ITEM_PORT.get());
+
         ModBlocks.FLUID_PORT.get().withBlockEntityType(FLUID_PORT.get());
+        ModBlocks.LV_FLUID_PORT.get().withBlockEntityType(FLUID_PORT.get());
+
         ModBlocks.ENERGY_PORT.get().withBlockEntityType(ENERGY_PORT.get());
+        ModBlocks.LV_ENERGY_PORT.get().withBlockEntityType(ENERGY_PORT.get());
+
         ModBlocks.INVISIBLE_STRUCTURE.get().withBlockEntityType(INVISIBLE_STRUCTURE.get());
     }
 }
