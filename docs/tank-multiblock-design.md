@@ -370,20 +370,20 @@ public record TankHudData(
 
 ## 13. 本轮实现清单（T1）
 
-- [ ] **T1.1 清理旧演示储罐**：删除 `TankBlock`、`tank` 方块/BE 注册、`lv_frame` 注册与资源、
+- [x] **T1.1 清理旧演示储罐**：删除 `TankBlock`、`tank` 方块/BE 注册、`lv_frame` 注册与资源、
       旧 `tank` 资源；保留 `steel_casing`（破碎机仍需）。
-- [ ] **T1.2 注册三方块**：`tank_frame`、`tank_shell`、`tank_glass` + 方块实体 + 分类 + 语言 +
+- [x] **T1.2 注册三方块**：`tank_frame`、`tank_shell`、`tank_glass` + 方块实体 + 分类 + 语言 +
       模型贴图 + 配方（占位或基础配方）。
-- [ ] **T1.3 洪水填充判定器**：`TankStructureProvider`，实现 §4.2/§4.3，含尺寸校验、
+- [x] **T1.3 洪水填充判定器**：`TankStructureProvider`，实现 §4.2/§4.3，含尺寸校验、
       棱必框架、面=外壳/玻璃/端口、内部必须空气（失败带坐标）。
-- [ ] **T1.4 容量与流体模块**：`FluidBufferModule` 支持「容量由内部体积决定」；
+- [x] **T1.4 容量与流体模块**：`FluidBufferModule` 支持「容量由内部体积决定」；
       `TankBlockEntity` 去等级、只保留流体模块。
-- [ ] **T1.5 端口吞吐**：按流体端口等级设置传输速率上限。
-- [ ] **T1.6 自动成型与播报**：完整结构自动成型；首成型广播中文提示。
-- [ ] **T1.7 GUI 与错误反馈**：安装工具任意部件开 GUI；未成型错误含坐标。
-- [ ] **T1.8 客户端液面**：`TankLiquidRenderer` 按 §7 绘制液面。
-- [ ] **T1.9 配置预留**：`Config.java` 增加 §8 三键，默认值生效。
-- [ ] **T1.10 自检**：`MultiblockSelfCheck` 增加储罐几何/容量自检（最少/最大尺寸、容量公式）。
+- [x] **T1.5 端口吞吐**：按流体端口等级设置传输速率上限（`EnergyTier.fluidTransfer()`）。
+- [x] **T1.6 自动成型与播报**：完整结构自动成型；首成型广播中文提示。
+- [x] **T1.7 GUI 与错误反馈**：安装工具任意部件开 GUI；未成型错误含坐标。
+- [x] **T1.8 客户端液面**：`TankLiquidRenderer` 按 §7 绘制液面。
+- [x] **T1.9 配置预留**：`Config.java` 增加 §8 三键，默认值生效。
+- [x] **T1.10 自检**：`MultiblockSelfCheck` 增加储罐几何/容量自检（最少/最大尺寸、容量公式）。
 - [x] **T1.11 HUD 统一数据与成员表**：`TankHudData` / `TankHudAccess` / `TankMembershipRegistry`
       （见 §10.2/§10.3），成型建表、破坏注销。
 - [x] **T1.12 HUD 插件**：Jade / WTHIT / TOP 插件各一个薄层（见 §10.4），

@@ -642,9 +642,10 @@ com.stardustindustry.stardustindustry
 | **D7** | 控制器 BER（投影幽灵渲染）+ 失败格客户端同步 | 未成型可看见投影 | ✅ 已完成（BER 由控制器绘制；runClient 无崩溃、`runServer` `Done`）|
 | **D7.5** | 成型整机重绘（Ledger 重绘）+ 动画（`MachineAnimators`）+ 连接材质 | 视觉闭环 | ✅ 已完成（粉碎机迁 provider；runServer `Done`、runClient 无崩溃）|
 | **D7.6** | 实机测试反馈修复：LV 端口贴图 / 储罐锚点与自动成型 / 投影改空位+控制器旁文字 / 全中文输出 / 任意部件开参数 GUI / 流体模块 / 隐形方块碰撞箱 | 可实测体验 | ✅ 已完成（详见 §12.1）|
-| **D7.7** | **储罐重做**：无等级框架/外壳/钢化玻璃 + 洪水填充判定 + 体积定容量 + 匠魂式液面 + **主流高亮模组兼容（HUD）** | 储罐可实机使用 | ⬜ **进行中（见 [`tank-multiblock-design.md`](./tank-multiblock-design.md)）** |
+| **D7.7** | **储罐重做**：无等级框架/外壳/钢化玻璃 + 洪水填充判定 + 体积定容量 + 匠魂式液面 + **主流高亮模组兼容（HUD）** | 储罐可实机使用 | ✅ 已完成（见 [`tank-multiblock-design.md`](./tank-multiblock-design.md)；高亮兼容见 §10.4） |
+| **D7.8** | **占位美术资源手册**：逐张标明每张贴图对应方块，供美术替换 | 美术可接手 | ✅ 已完成（见 [`textures-placeholder-manual.md`](./textures-placeholder-manual.md)） |
 | **D8** | `signal/` 控制端口逻辑 + `ControlPortScreen` + `compat/cc` | 逻辑接口可用 | ⬜ |
-| **D9** | 重写破碎机为静态示例；数值调优；WAILA | 可玩 | ⬜ |
+| **D9** | 重写破碎机为静态示例；数值调优 | 可玩 | ⬜ |
 
 ### D1 落地清单（已完成）
 
