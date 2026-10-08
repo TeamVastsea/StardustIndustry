@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " B ",
+    "BTB",
+    " B "
+  ],
+  "key": {
+    "B": { "item": "stardustindustry:lv_base" },
+    "T": { "item": "minecraft:chest" }
+  },
+  "result": {
+    "id": "stardustindustry:lv_buffer_core",
+    "count": 1
+  }
+}

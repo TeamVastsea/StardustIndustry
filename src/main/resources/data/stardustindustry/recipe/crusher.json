@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "III",
+    "ICI",
+    "III"
+  ],
+  "key": {
+    "I": { "tag": "c:ingots/iron" },
+    "C": { "tag": "c:ingots/steel" }
+  },
+  "result": {
+    "id": "stardustindustry:crusher",
+    "count": 1
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " B ",
+    "BTB",
+    " B "
+  ],
+  "key": {
+    "B": { "item": "stardustindustry:lv_base" },
+    "T": { "item": "minecraft:diamond_pickaxe" }
+  },
+  "result": {
+    "id": "stardustindustry:lv_grinding_core",
+    "count": 1
+  }
+}

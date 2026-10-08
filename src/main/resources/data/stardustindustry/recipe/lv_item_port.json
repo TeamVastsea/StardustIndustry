@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " B ",
+    "BPB",
+    " B "
+  ],
+  "key": {
+    "P": { "item": "stardustindustry:item_port" },
+    "B": { "item": "stardustindustry:lv_base" }
+  },
+  "result": {
+    "id": "stardustindustry:lv_item_port",
+    "count": 1
+  }
+}

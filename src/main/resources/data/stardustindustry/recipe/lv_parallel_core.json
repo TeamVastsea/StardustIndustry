@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " B ",
+    "BTB",
+    " B "
+  ],
+  "key": {
+    "B": { "item": "stardustindustry:lv_base" },
+    "T": { "item": "minecraft:piston" }
+  },
+  "result": {
+    "id": "stardustindustry:lv_parallel_core",
+    "count": 1
+  }
+}

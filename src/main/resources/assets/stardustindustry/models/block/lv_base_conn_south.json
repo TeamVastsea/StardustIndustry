@@ -1,0 +1,11 @@
+{
+  "parent": "minecraft:block/block",
+  "textures": { "all": "stardustindustry:block/lv_base" },
+  "elements": [
+    {
+      "from": [0,0,14],
+      "to": [16,16,16],
+      "faces": { "south": { "texture": "#all", "uv": [0,0,16,16] } }
+    }
+  ]
+}

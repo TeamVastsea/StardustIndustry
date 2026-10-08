@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " C ",
+    "CSC",
+    " C "
+  ],
+  "key": {
+    "C": { "tag": "c:ingots/copper" },
+    "S": { "tag": "c:ingots/steel" }
+  },
+  "result": {
+    "id": "stardustindustry:energy_port",
+    "count": 1
+  }
+}

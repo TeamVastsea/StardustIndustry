@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " B ",
+    "BTB",
+    " B "
+  ],
+  "key": {
+    "B": { "item": "stardustindustry:lv_base" },
+    "T": { "item": "minecraft:water_bucket" }
+  },
+  "result": {
+    "id": "stardustindustry:lv_heat_exchanger_core",
+    "count": 1
+  }
+}

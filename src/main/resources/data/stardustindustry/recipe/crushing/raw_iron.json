@@ -1,0 +1,20 @@
+{
+  "type": "stardustindustry:crushing",
+  "ingredient": {
+    "tag": "c:raw_materials/iron"
+  },
+  "results": [
+    {
+      "id": "stardustindustry:crushed_iron",
+      "count": 2
+    }
+  ],
+  "byproducts": [
+    {
+      "item": { "id": "stardustindustry:crushed_iron" },
+      "chance": 0.25
+    }
+  ],
+  "processing_time": 200,
+  "energy_cost": 20
+}

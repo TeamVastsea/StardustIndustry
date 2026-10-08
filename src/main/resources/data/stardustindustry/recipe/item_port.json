@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " I ",
+    "ISI",
+    " I "
+  ],
+  "key": {
+    "I": { "tag": "c:ingots/iron" },
+    "S": { "tag": "c:ingots/steel" }
+  },
+  "result": {
+    "id": "stardustindustry:item_port",
+    "count": 1
+  }
+}

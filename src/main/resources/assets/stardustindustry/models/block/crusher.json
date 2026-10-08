@@ -1,0 +1,8 @@
+{
+  "parent": "minecraft:block/orientable",
+  "textures": {
+    "top": "stardustindustry:block/crusher_top",
+    "front": "stardustindustry:block/crusher_front",
+    "side": "stardustindustry:block/crusher_side"
+  }
+}

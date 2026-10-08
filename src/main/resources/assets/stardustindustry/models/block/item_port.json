@@ -1,0 +1,8 @@
+{
+  "parent": "minecraft:block/cube_bottom_top",
+  "textures": {
+    "top": "stardustindustry:block/port_item_top",
+    "bottom": "stardustindustry:block/port_item_bottom",
+    "side": "stardustindustry:block/port_item_side"
+  }
+}

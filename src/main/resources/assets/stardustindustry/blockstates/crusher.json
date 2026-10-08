@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": { "model": "stardustindustry:block/crusher" },
+    "facing=east":  { "model": "stardustindustry:block/crusher", "y": 90 },
+    "facing=south": { "model": "stardustindustry:block/crusher", "y": 180 },
+    "facing=west":  { "model": "stardustindustry:block/crusher", "y": 270 }
+  }
+}
