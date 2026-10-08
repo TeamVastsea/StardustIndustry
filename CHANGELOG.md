@@ -24,26 +24,36 @@
   改为储罐外壳。
 
 ### 变更
-- **储罐参数界面改为专用格式**：Shift+右键储罐任意部件，界面显示
-  「多方块结构已成型！（亮黄）／多方块尺寸／多方块结构／储罐容积（B）／存储流体（中英双语）／
-  已安装端口／最大传输速率」，面板改为浅灰底 + 深色字，储罐不再显示无意义的等级/速度行，
-  也不提供拆除按钮。快照新增 `MachineParamsData.TankParams`（服务端附带，普通机器为 `null`）。
+- **删除无等级端口**：移除 `item_port`/`fluid_port`/`energy_port` 三个无前缀端口
+  （方块、物品、能力、方块实体、贴图、语言、创造栏均清理），
+  只保留 `LV` 端口；后续 MV/HV/EHV 按同一模式扩展。
+- **储罐参数界面**新增「已存储容量：100B」「剩余容量：412B」两行。
 - **等级一律显示 LV/MV/HV/EHV**：`tier.stardustindustry.*` 中英均改为缩写
   （此前中文为「低压/中压/…」）。所有端口（含流体端口）统一用该模式。
 - **流体端口支持手桶交互**：手持容器右击流体端口可灌入 / 取出流体。
+- **流体端口也参与高亮显示**：Jade/WTHIT provider 增加对流体端口的注册与角色过滤，
+  指向流体端口与指向框架/外壳/玻璃显示同样的内容。
 
 ### 修复
 - **钢化玻璃不透明**：`tank_glass` 模型未声明渲染层，被当作实心渲染，
   导致看不到内部液位。模型加上 `"render_type": "minecraft:translucent"`。
 - **水桶灌不进储罐**：水桶在自己的 `BucketItem.useOn` 里先把水倒进世界，
   抢在方块 `useItemOn` 之前。改由 `PlayerInteractEvent.RightClickBlock` 事件抢先拦截
-  （`PortFluidInteraction`），命中流体端口即转移流体并取消事件。
+  （`PortFluidInteraction`，显式取 `IFluidHandler` 能力后调用 `FluidUtil`），
+  命中流体端口即转移流体并取消事件。
+- **流体变化不同步到客户端**：`FluidBufferModule` 灌入/抽出时只 `setChanged()`（仅存盘），
+  导致 WTHIT 等读客户端缓存的显示仍为「空」。新增
+  `MachineBlockEntity.markContentsChanged()`（`setChanged` + `sendBlockUpdated`）并在模块中调用。
 - **WTHIT 插件加载报错**：`waila_plugins.json` 用了旧格式（顶层直接写 `initializer`），
   被 WTHIT 当作旧接口 `IWailaPlugin` 实例化而抛 `ClassCastException`。
   改为现代格式（`entrypoints.client`）。
 - **动态结构不再画投影幽灵块**：储罐形状由玩家自定，没有唯一正确方块可作幽灵；
   `MachineBlockEntity.supportsProjection()` 默认 `true`，储罐覆写为 `false`，
   未成型时仍显示浮动文字提示。（沉浸式投影留待后续统一实现。）
+
+### 测试
+- 将机械动力 Create `1.21.1-6.0.10`（内嵌 Flywheel/Ponder/Registrate）拷贝进开发环境
+  一并启动，验证与其流体管道、动力臂与放置逻辑的兼容性。
 
 ### 新增
 - **真正的动态储罐多方块**：新增 `tank_frame`（12 条棱）、`tank_shell`（6 个面，其中一块承载方块实体，作为锚点与控制器）、`tank_glass`（透光面）。

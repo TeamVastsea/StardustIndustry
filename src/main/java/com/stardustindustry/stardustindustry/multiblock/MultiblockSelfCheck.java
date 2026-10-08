@@ -119,11 +119,11 @@ public final class MultiblockSelfCheck {
                 com.stardustindustry.stardustindustry.registry.ModBlocks.LV_BASE.get())) {
             throw new IllegalStateException("self-check: an LV base must be a connectable part");
         }
-        // An untiered legacy port has no level to share, so it must not join a
-        // tiered surface.
-        if (com.stardustindustry.stardustindustry.machine.ConnectedPartProperties.isConnectable(
-                com.stardustindustry.stardustindustry.registry.ModBlocks.ITEM_PORT.get())) {
-            throw new IllegalStateException("self-check: an untiered port must not be connectable");
+        // Every port is tiered and declares a level, so it must be connectable:
+        // that is what lets a machine's surface share one tier.
+        if (!com.stardustindustry.stardustindustry.machine.ConnectedPartProperties.isConnectable(
+                com.stardustindustry.stardustindustry.registry.ModBlocks.LV_ITEM_PORT.get())) {
+            throw new IllegalStateException("self-check: a tiered port must be connectable");
         }
     }
 

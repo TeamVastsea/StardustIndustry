@@ -18,6 +18,11 @@ import net.neoforged.neoforge.registries.DeferredRegister;
  * <p>Kept in one register so the mod class has a single call per registry kind.
  * The three port types are separate so capability registration can attach one
  * capability to each without runtime role checks.</p>
+ *
+ * <p>There is one port type per <em>role</em>, not per tier. Every tier of, say,
+ * a fluid port is the same block entity, differing only in the throughput its
+ * block declares, so a new tier adds a block to an existing type here rather
+ * than a type of its own.</p>
  */
 public final class ModBlockEntities {
 
@@ -31,22 +36,16 @@ public final class ModBlockEntities {
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<ItemPortBlockEntity>> ITEM_PORT =
             BLOCK_ENTITIES.register("item_port",
                     () -> BlockEntityType.Builder.of(ItemPortBlockEntity::new,
-                            ModBlocks.ITEM_PORT.get(),
                             ModBlocks.LV_ITEM_PORT.get()).build(null));
 
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<FluidPortBlockEntity>> FLUID_PORT =
             BLOCK_ENTITIES.register("fluid_port",
                     () -> BlockEntityType.Builder.of(FluidPortBlockEntity::new,
-                            ModBlocks.FLUID_PORT.get(),
-                            // The tank's fluid ports are the same kind of port as
-                            // the machine's, differing only in throughput, so
-                            // each tier's port shares this one type.
                             ModBlocks.LV_FLUID_PORT.get()).build(null));
 
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<EnergyPortBlockEntity>> ENERGY_PORT =
             BLOCK_ENTITIES.register("energy_port",
                     () -> BlockEntityType.Builder.of(EnergyPortBlockEntity::new,
-                            ModBlocks.ENERGY_PORT.get(),
                             ModBlocks.LV_ENERGY_PORT.get()).build(null));
 
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<com.stardustindustry.stardustindustry.machine.InvisibleStructureBlockEntity>> INVISIBLE_STRUCTURE =
@@ -61,8 +60,8 @@ public final class ModBlockEntities {
 
     private ModBlockEntities() {}
 
-    public static void register(IEventBus modEventBus) {
-        BLOCK_ENTITIES.register(modEventBus);
+    public static void register(IEventBus eventBus) {
+        BLOCK_ENTITIES.register(eventBus);
     }
 
     /**
@@ -74,18 +73,12 @@ public final class ModBlockEntities {
      * available, which is called from the mod constructor.</p>
      */
     public static void wirePorts() {
-        // Each port type is shared by the untiered block and every tiered
-        // variant of the same role; both must be wired, or the first placement
-        // of an unwired one throws inside newBlockEntity.
-        ModBlocks.ITEM_PORT.get().withBlockEntityType(ITEM_PORT.get());
+        // Each role shares one type across every tier that exists; a new tier
+        // must be wired here as well, or its first placement throws inside
+        // newBlockEntity.
         ModBlocks.LV_ITEM_PORT.get().withBlockEntityType(ITEM_PORT.get());
-
-        ModBlocks.FLUID_PORT.get().withBlockEntityType(FLUID_PORT.get());
         ModBlocks.LV_FLUID_PORT.get().withBlockEntityType(FLUID_PORT.get());
-
-        ModBlocks.ENERGY_PORT.get().withBlockEntityType(ENERGY_PORT.get());
         ModBlocks.LV_ENERGY_PORT.get().withBlockEntityType(ENERGY_PORT.get());
-
         ModBlocks.INVISIBLE_STRUCTURE.get().withBlockEntityType(INVISIBLE_STRUCTURE.get());
     }
 }

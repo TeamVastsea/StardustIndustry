@@ -469,6 +469,23 @@ public abstract class MachineBlockEntity extends BlockEntity {
     }
 
     /**
+     * Marks a change to the machine's stored contents and pushes it to clients.
+     *
+     * <p>{@link #setChanged()} alone only schedules a disk save; it does not tell
+     * the client anything. A buffer that changes while a player watches — a tank
+     * being filled by a pipe — would then keep showing its old contents until the
+     * chunk reloaded, which is exactly the sort of stale display a highlight
+     * tooltip is most likely to be judged by. Modules call this instead so the
+     * client's copy is refreshed in the same tick.</p>
+     */
+    public final void markContentsChanged() {
+        setChanged();
+        if (level != null && !level.isClientSide()) {
+            level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
+        }
+    }
+
+    /**
      * Called on the server when the structure transitions, so a machine can tell
      * nearby players what happened. The default is silent; a machine that forms
      * without any player action (a dynamic tank) overrides this to announce

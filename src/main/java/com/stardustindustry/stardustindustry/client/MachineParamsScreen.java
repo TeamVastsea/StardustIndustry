@@ -138,13 +138,20 @@ public class MachineParamsScreen extends AbstractContainerScreen<MachineParamsMe
 
         // Capacity is already in mB on the snapshot; the vessel layout speaks in
         // whole buckets (B), which is how a player sizes a tank.
+        int capacityBuckets = data.fluidCapacity() / 1000;
+        int storedBuckets = Math.max(0, data.fluidAmount()) / 1000;
         lines.add(Component.translatable("screen.stardustindustry.machine_params.vessel.capacity",
-                data.fluidCapacity() / 1000));
+                capacityBuckets));
 
         lines.add(Component.translatable("screen.stardustindustry.machine_params.vessel.fluid",
                 tank.fluidKey().isEmpty()
                         ? Component.translatable("screen.stardustindustry.machine_params.fluid.empty")
                         : fluidName(tank)));
+
+        lines.add(Component.translatable("screen.stardustindustry.machine_params.vessel.stored",
+                storedBuckets));
+        lines.add(Component.translatable("screen.stardustindustry.machine_params.vessel.remaining",
+                Math.max(0, capacityBuckets - storedBuckets)));
 
         lines.add(Component.translatable("screen.stardustindustry.machine_params.vessel.ports",
                 portList(tank.ports())));

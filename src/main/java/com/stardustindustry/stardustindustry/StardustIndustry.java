@@ -95,9 +95,6 @@ public class StardustIndustry {
         if (event.getTabKey() == ModRegistries.MAIN_TAB.getKey()) {
             event.accept(ModBlocks.CRUSHER_ITEM);
             event.accept(ModBlocks.STEEL_CASING_ITEM);
-            event.accept(ModBlocks.ITEM_PORT_ITEM);
-            event.accept(ModBlocks.FLUID_PORT_ITEM);
-            event.accept(ModBlocks.ENERGY_PORT_ITEM);
             event.accept(ModBlocks.LV_BASE_ITEM);
             event.accept(ModBlocks.LV_ITEM_PORT_ITEM);
             event.accept(ModBlocks.LV_FLUID_PORT_ITEM);

@@ -58,7 +58,14 @@ public class TankWthitPlugin implements IWailaClientPlugin {
                 return tank;
             }
             Block block = accessor.getBlock();
-            if (block != ModBlocks.TANK_FRAME.get()
+            // A fluid port belongs to the machine it is bound to, so it shows the
+            // same readout; item and energy ports are filtered out. The provider
+            // is registered on all ports, so the role check happens here.
+            if (block instanceof com.stardustindustry.stardustindustry.machine.MachinePortBlock port) {
+                if (port.role() != com.stardustindustry.stardustindustry.multiblock.PartRole.PORT_FLUID) {
+                    return null;
+                }
+            } else if (block != ModBlocks.TANK_FRAME.get()
                     && block != ModBlocks.TANK_SHELL.get()
                     && block != ModBlocks.TANK_GLASS.get()) {
                 return null;

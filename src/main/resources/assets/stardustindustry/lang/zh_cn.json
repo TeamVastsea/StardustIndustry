@@ -3,9 +3,6 @@
 
   "block.stardustindustry.crusher": "破碎机",
   "block.stardustindustry.steel_casing": "钢制机壳",
-  "block.stardustindustry.item_port": "物品端口",
-  "block.stardustindustry.fluid_port": "流体端口",
-  "block.stardustindustry.energy_port": "能量端口",
   "block.stardustindustry.invisible_structure": "机器结构",
   "block.stardustindustry.lv_base": "LV 底座",
   "block.stardustindustry.lv_item_port": "LV 物品端口",
@@ -48,6 +45,8 @@
   "screen.stardustindustry.machine_params.vessel.structure": "多方块结构：%s",
   "screen.stardustindustry.machine_params.vessel.capacity": "储罐容积：%sB",
   "screen.stardustindustry.machine_params.vessel.fluid": "存储流体：%s",
+  "screen.stardustindustry.machine_params.vessel.stored": "已存储容量：%sB",
+  "screen.stardustindustry.machine_params.vessel.remaining": "剩余容量：%sB",
   "screen.stardustindustry.machine_params.vessel.ports": "已安装端口：%s",
   "screen.stardustindustry.machine_params.vessel.ports.none": "无",
   "screen.stardustindustry.machine_params.vessel.port_entry": "%s流体端口 x%s",

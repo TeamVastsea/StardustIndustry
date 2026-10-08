@@ -36,7 +36,7 @@
 | `textures/block/tank_side.png` | **储罐外壳** `tank_shell` | `orientable` 的 `side` | 旧坦克侧面占位 | 钢板外壳侧面 |
 | `textures/block/tank_top.png` | **储罐外壳** `tank_shell` | `orientable` 的 `top` | 旧坦克顶面占位 | 钢板外壳顶面 |
 | `textures/block/tank_front.png` | **储罐外壳** `tank_shell` | `orientable` 的 `front` | 旧坦克正面占位 | 钢板外壳正面 |
-| （无独立贴图） | **钢化玻璃** `tank_glass` | `cube_all` → 引用原版 `minecraft:block/glass` | 原版玻璃 | **可替换为自制钢化玻璃贴图**（见 §四·待办 1） |
+| （无独立贴图） | **钢化玻璃** `tank_glass` | `cube_all`（`render_type: translucent`）→ 引用原版 `minecraft:block/glass` | 原版玻璃 | **可替换为自制钢化玻璃贴图**（见 §四·待办 1） |
 
 > 说明：`tank_shell` 目前用的是 `minecraft:block/orientable` 父模型（区分 top/front/side），
 > 因此外壳需要 **3 张** 独立贴图；`tank_front.png` 与 `tank_shell.png` 命名不一致，
@@ -52,19 +52,13 @@
 | `textures/block/crusher_side.png` | 破碎机 | `side` | 占位 | 机身侧面 |
 | `textures/block/steel_casing.png` | **钢制机壳** `steel_casing` | `cube_all` | 占位 | 通用钢制机壳纹理（多方块基座重复使用） |
 
-### 2.3 端口（普通 + LV）
+### 2.3 端口（按等级，仅保留 LV/MV/HV/EHV）
+
+> **无等级（无前缀）端口已删除**。所有端口一律带等级前缀，当前实现 LV 一套；
+> MV/HV/EHV 按同一模式扩展（`mv_item_port` 等）。
 
 | 贴图文件 | 对应方块 | 贴图键 | 建议美术方向 |
 | --- | --- | --- | --- |
-| `textures/block/port_item_top.png` | **物品端口** `item_port` | `top` | 物品输入/输出口 |
-| `textures/block/port_item_side.png` | 物品端口 | `side` | 端口侧面 |
-| `textures/block/port_item_bottom.png` | 物品端口 | `bottom` | 端口底面 |
-| `textures/block/port_fluid_top.png` | **流体端口** `fluid_port` | `top` | 管口 |
-| `textures/block/port_fluid_side.png` | 流体端口 | `side` | 管口侧面 |
-| `textures/block/port_fluid_bottom.png` | 流体端口 | `bottom` | 管口底面 |
-| `textures/block/port_energy_top.png` | **能量端口** `energy_port` | `top` | 接线端子 |
-| `textures/block/port_energy_side.png` | 能量端口 | `side` | 线缆/端子侧面 |
-| `textures/block/port_energy_bottom.png` | 能量端口 | `bottom` | 端子底面 |
 | `textures/block/lv_item_port_top.png` | **LV 物品端口** `lv_item_port` | `top` | 带 LV 标识的物品口 |
 | `textures/block/lv_item_port_side.png` | LV 物品端口 | `side` | 同上侧面 |
 | `textures/block/lv_item_port_bottom.png` | LV 物品端口 | `bottom` | 同上底面 |

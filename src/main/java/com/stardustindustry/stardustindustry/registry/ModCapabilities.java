@@ -33,23 +33,18 @@ public final class ModCapabilities {
     private ModCapabilities() {}
 
     public static void register(RegisterCapabilitiesEvent event) {
-        // Item port -> the machine's inventory.
-        event.registerBlock(Capabilities.ItemHandler.BLOCK,
-                (level, pos, state, blockEntity, side) -> itemHandler(blockEntity),
-                ModBlocks.ITEM_PORT.get());
-
         // Energy port -> the machine's FE buffer.
         event.registerBlock(Capabilities.EnergyStorage.BLOCK,
                 (level, pos, state, blockEntity, side) -> energyStorage(blockEntity),
-                ModBlocks.ENERGY_PORT.get());
+                ModBlocks.LV_ENERGY_PORT.get());
 
         // Fluid ports forward to the machine's fluid buffer. A machine without a
         // tank module reports nothing, so a port on a non-fluid machine is inert
         // rather than a silent black hole. A tiered port further caps the rate at
-        // its own tier, so two ports on one tank move fluid at their own speeds.
+        // its own tier, so two ports on one machine move fluid at their own speeds.
         event.registerBlock(Capabilities.FluidHandler.BLOCK,
                 (level, pos, state, blockEntity, side) -> fluidHandler(blockEntity, fluidRate(state)),
-                ModBlocks.FLUID_PORT.get());
+                ModBlocks.LV_FLUID_PORT.get());
 
         // The tank's shell is the machine itself, not a port: it exposes its fluid
         // buffer directly, so a pipe can also connect straight to the vessel wall.
@@ -61,12 +56,6 @@ public final class ModCapabilities {
         event.registerBlock(Capabilities.ItemHandler.BLOCK,
                 (level, pos, state, blockEntity, side) -> itemHandler(blockEntity),
                 ModBlocks.LV_ITEM_PORT.get());
-        event.registerBlock(Capabilities.EnergyStorage.BLOCK,
-                (level, pos, state, blockEntity, side) -> energyStorage(blockEntity),
-                ModBlocks.LV_ENERGY_PORT.get());
-        event.registerBlock(Capabilities.FluidHandler.BLOCK,
-                (level, pos, state, blockEntity, side) -> fluidHandler(blockEntity, fluidRate(state)),
-                ModBlocks.LV_FLUID_PORT.get());
     }
 
     /**

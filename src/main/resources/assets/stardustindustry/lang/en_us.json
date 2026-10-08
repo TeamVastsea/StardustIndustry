@@ -3,9 +3,6 @@
 
   "block.stardustindustry.crusher": "Crusher",
   "block.stardustindustry.steel_casing": "Steel Casing",
-  "block.stardustindustry.item_port": "Item Port",
-  "block.stardustindustry.fluid_port": "Fluid Port",
-  "block.stardustindustry.energy_port": "Energy Port",
   "block.stardustindustry.invisible_structure": "Machine Structure",
   "block.stardustindustry.lv_base": "LV Base",
   "block.stardustindustry.lv_item_port": "LV Item Port",
@@ -48,6 +45,8 @@
   "screen.stardustindustry.machine_params.vessel.structure": "Multiblock structure: %s",
   "screen.stardustindustry.machine_params.vessel.capacity": "Tank capacity: %sB",
   "screen.stardustindustry.machine_params.vessel.fluid": "Stored fluid: %s",
+  "screen.stardustindustry.machine_params.vessel.stored": "Stored: %sB",
+  "screen.stardustindustry.machine_params.vessel.remaining": "Remaining: %sB",
   "screen.stardustindustry.machine_params.vessel.ports": "Installed ports: %s",
   "screen.stardustindustry.machine_params.vessel.ports.none": "None",
   "screen.stardustindustry.machine_params.vessel.port_entry": "%s fluid port x%s",

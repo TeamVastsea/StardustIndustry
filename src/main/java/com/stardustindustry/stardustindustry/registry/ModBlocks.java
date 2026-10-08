@@ -46,18 +46,6 @@ public final class ModBlocks {
                     .sound(SoundType.METAL)
                     .requiresCorrectToolForDrops()));
 
-    /** Item port: exposes the machine's inventory to hoppers, pipes and ME. */
-    public static final DeferredBlock<MachinePortBlock> ITEM_PORT = ModRegistries.BLOCKS.register("item_port",
-            () -> new MachinePortBlock(portProperties(), PartRole.PORT_ITEM));
-
-    /** Fluid port: exposes the machine's tanks. */
-    public static final DeferredBlock<MachinePortBlock> FLUID_PORT = ModRegistries.BLOCKS.register("fluid_port",
-            () -> new MachinePortBlock(portProperties(), PartRole.PORT_FLUID));
-
-    /** Energy port: exposes the machine's FE buffer as an {@code IEnergyStorage}. */
-    public static final DeferredBlock<MachinePortBlock> ENERGY_PORT = ModRegistries.BLOCKS.register("energy_port",
-            () -> new MachinePortBlock(portProperties(), PartRole.PORT_ENERGY));
-
     /**
      * The block that replaces a static machine's body once installed. Invisible
      * to the eye but solid underfoot: the controller's renderer draws the machine
@@ -168,15 +156,6 @@ public final class ModBlocks {
     /** Block item for the casing. */
     public static final DeferredItem<BlockItem> STEEL_CASING_ITEM =
             ModRegistries.ITEMS.registerSimpleBlockItem("steel_casing", STEEL_CASING);
-    /** Block item for the item port. */
-    public static final DeferredItem<BlockItem> ITEM_PORT_ITEM =
-            ModRegistries.ITEMS.registerSimpleBlockItem("item_port", ITEM_PORT);
-    /** Block item for the fluid port. */
-    public static final DeferredItem<BlockItem> FLUID_PORT_ITEM =
-            ModRegistries.ITEMS.registerSimpleBlockItem("fluid_port", FLUID_PORT);
-    /** Block item for the energy port. */
-    public static final DeferredItem<BlockItem> ENERGY_PORT_ITEM =
-            ModRegistries.ITEMS.registerSimpleBlockItem("energy_port", ENERGY_PORT);
     /** Block item for the invisible structure block; not offered in the creative tab. */
     public static final DeferredItem<BlockItem> INVISIBLE_STRUCTURE_ITEM =
             ModRegistries.ITEMS.registerSimpleBlockItem("invisible_structure", INVISIBLE_STRUCTURE);
@@ -265,9 +244,6 @@ public final class ModBlocks {
      */
     public static void registerPartTypes() {
         MachinePartTypes.register(STEEL_CASING.get(), MachinePartTypes.PartType.SHELL);
-        MachinePartTypes.register(ITEM_PORT.get(), MachinePartTypes.PartType.PORT);
-        MachinePartTypes.register(FLUID_PORT.get(), MachinePartTypes.PartType.PORT);
-        MachinePartTypes.register(ENERGY_PORT.get(), MachinePartTypes.PartType.PORT);
 
         // LV set: ports, base block, and the four filler kinds.
         MachinePartTypes.register(LV_ITEM_PORT.get(), MachinePartTypes.PartType.PORT);

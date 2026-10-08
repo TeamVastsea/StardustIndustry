@@ -88,7 +88,9 @@ public final class FluidBufferModule implements MachineModule, ModuleHost.Resour
             @Override
             protected void onContentsChanged() {
                 if (machine != null) {
-                    machine.setChanged();
+                    // Sync, not just save: a tank filled by a pipe must show its
+                    // new contents on clients immediately.
+                    machine.markContentsChanged();
                 }
             }
         };

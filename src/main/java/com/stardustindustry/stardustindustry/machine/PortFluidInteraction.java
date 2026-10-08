@@ -1,11 +1,17 @@
 package com.stardustindustry.stardustindustry.machine;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.neoforge.capabilities.Capabilities;
+import net.neoforged.neoforge.common.util.TriState;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
+import net.neoforged.neoforge.fluids.FluidUtil;
+import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 
 /**
  * Intercepts a right-click on a fluid port so a held bucket pours into the
@@ -19,9 +25,11 @@ import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
  * ahead of both, so the same interaction can be claimed here and the event
  * cancelled, which stops the vanilla placement.
  *
- * <p>The actual transfer still goes through NeoForge's fluid-handler helper, so
- * every container behaves the same and the block keeps its own {@code useItemOn}
- * for the cases that do reach it.
+ * <p>The fluid handler is fetched explicitly rather than through the
+ * position-based helper: that keeps the code honest about the one case that
+ * matters (a port bound to a machine exposes a handler, an unbound one does
+ * not), and it means an inert port falls through to normal block behaviour
+ * instead of being reported as handled.
  */
 public final class PortFluidInteraction {
 
@@ -32,8 +40,9 @@ public final class PortFluidInteraction {
         Level level = event.getLevel();
         BlockPos pos = event.getPos();
 
-        // Only fluid ports with a bound machine have a fluid handler to move into.
-        if (!(level.getBlockState(pos).getBlock() instanceof MachinePortBlock port)
+        // Only fluid ports take part; item and energy ports are left alone.
+        BlockState state = level.getBlockState(pos);
+        if (!(state.getBlock() instanceof MachinePortBlock port)
                 || port.role() != com.stardustindustry.stardustindustry.multiblock.PartRole.PORT_FLUID) {
             return;
         }
@@ -46,11 +55,30 @@ public final class PortFluidInteraction {
             return;
         }
 
-        if (net.neoforged.neoforge.fluids.FluidUtil.interactWithFluidHandler(
-                player, hand, level, pos, event.getHitVec().getDirection())) {
+        if (level.isClientSide()) {
+            com.stardustindustry.stardustindustry.StardustIndustry.LOGGER.info(
+                    "[port-fluid] right-click cl on fluid port at {} with {}",
+                    pos, player.getItemInHand(hand).getItem());
+            return;
+        }
+        com.stardustindustry.stardustindustry.StardustIndustry.LOGGER.info(
+                "[port-fluid] right-click srv on fluid port at {} with {}",
+                pos, player.getItemInHand(hand).getItem());
+
+        // The handler comes from the block capability, which is null on a port
+        // that is not bound to a machine. A null handler means nothing to do.
+        IFluidHandler handler = level.getCapability(
+                Capabilities.FluidHandler.BLOCK, pos, event.getHitVec().getDirection());
+        com.stardustindustry.stardustindustry.StardustIndustry.LOGGER.info(
+                "[port-fluid] handler = {}", handler);
+        if (handler == null) {
+            return;
+        }
+
+        if (FluidUtil.interactWithFluidHandler(player, hand, handler)) {
             // Stop the bucket from also emptying itself into the world: the item
             // may not act, and the result tells both sides the click was used.
-            event.setUseItem(net.neoforged.neoforge.common.util.TriState.FALSE);
+            event.setUseItem(TriState.FALSE);
             event.setCanceled(true);
             event.setCancellationResult(net.minecraft.world.InteractionResult.SUCCESS);
         }

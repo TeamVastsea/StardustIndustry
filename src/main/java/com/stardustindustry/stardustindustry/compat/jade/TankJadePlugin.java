@@ -47,6 +47,10 @@ public class TankJadePlugin implements IWailaPlugin {
         registration.registerBlockComponent(provider, com.stardustindustry.stardustindustry.machine.tank.TankShellBlock.class);
         registration.registerBlockComponent(provider, com.stardustindustry.stardustindustry.machine.tank.TankFrameBlock.class);
         registration.registerBlockComponent(provider, com.stardustindustry.stardustindustry.machine.tank.TankGlassBlock.class);
+        // Fluid ports are tank blocks too — the player may point at one and
+        // expect the same readout. The provider filters to fluid ports itself,
+        // since MachinePortBlock is shared with item and energy ports.
+        registration.registerBlockComponent(provider, com.stardustindustry.stardustindustry.machine.MachinePortBlock.class);
     }
 
     /** Appends the tank's size, contents and capacity to Jade's tooltip. */
@@ -78,9 +82,17 @@ public class TankJadePlugin implements IWailaPlugin {
                 return tank;
             }
             Block block = accessor.getBlockState().getBlock();
+            // A fluid port is part of whatever machine it is bound to, so the
+            // shared lookup is asked for the same answer the tool gets. The
+            // provider is registered on all ports, so filter the roles here.
+            if (block instanceof com.stardustindustry.stardustindustry.machine.MachinePortBlock port
+                    && port.role() != com.stardustindustry.stardustindustry.multiblock.PartRole.PORT_FLUID) {
+                return null;
+            }
             if (block != ModBlocks.TANK_FRAME.get()
                     && block != ModBlocks.TANK_SHELL.get()
-                    && block != ModBlocks.TANK_GLASS.get()) {
+                    && block != ModBlocks.TANK_GLASS.get()
+                    && !(block instanceof com.stardustindustry.stardustindustry.machine.MachinePortBlock)) {
                 return null;
             }
             return TankHudAccess.findTank(accessor.getLevel(), accessor.getPosition());
