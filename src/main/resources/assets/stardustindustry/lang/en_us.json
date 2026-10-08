@@ -59,6 +59,9 @@
   "hud.stardustindustry.tank.percent": "(%s%%)",
   "hud.stardustindustry.tank.unformed": "Tank not formed",
 
+  "config.jade.plugin_stardustindustry.tank_contents": "Tank Contents",
+  "config.waila.plugin_stardustindustry.tank": "Tank Contents",
+
   "structure.stardustindustry.need.controller": "the controller on the shell",
   "structure.stardustindustry.need.frame": "a frame block",
   "structure.stardustindustry.need.panel": "a shell block or port",

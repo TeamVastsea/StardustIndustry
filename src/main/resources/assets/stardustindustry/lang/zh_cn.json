@@ -59,6 +59,9 @@
   "hud.stardustindustry.tank.percent": "（%s%%）",
   "hud.stardustindustry.tank.unformed": "储罐未成型",
 
+  "config.jade.plugin_stardustindustry.tank_contents": "储罐内容物",
+  "config.waila.plugin_stardustindustry.tank": "储罐内容物",
+
   "structure.stardustindustry.need.controller": "贴在壳上的控制器",
   "structure.stardustindustry.need.frame": "框架块",
   "structure.stardustindustry.need.panel": "外壳块或端口",
