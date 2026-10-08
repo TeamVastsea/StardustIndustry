@@ -19,10 +19,19 @@
 - **`TankLiquidRenderer`**：以半透明流体盒渲染内部液位，透过玻璃可见（Tinkers' Smeltery 风格）。
 - 配置项：`tankBucketsPerAirBlock`、`tankMinSize`、`tankMaxSize`。
 - 自检新增储罐几何与容量校验。
+- **高亮模组兼容（Jade / WTHIT / The One Probe）**：指向储罐**任意**方块（框架 / 外壳 / 玻璃），
+  高亮栏都会显示尺寸、内部流体、存量与容量百分比。
+  - `compat/hud/TankHudData`（只读数据快照）+ `TankHudLines`（三模组统一文案）。
+  - `compat/jade/TankJadePlugin`（`@WailaPlugin` 发现）、`compat/wthit/TankWthitPlugin`
+    （资源根 `waila_plugins.json` 发现）、`compat/top/TankTopPlugin`（IMC `getTheOneProbe`）。
+  - 均为**软依赖**：不安装高亮模组时本模组照常运行；`build.gradle` 以 `compileOnly` + `localRuntime` 接入。
 
 ### 变更
 - `EnergyTier` 新增 `fluidTransfer()`（流体端口吞吐率）。
 - 中英文语言文件同步更新（方块名、结构提示、配置项）。
+
+### 文档
+- 新增 `docs/textures-placeholder-manual.md`：占位材质总清单，逐一标明每张贴图对应哪个方块、用途与建议美术方向，供美术替换。
 
 ### 移除
 - 旧的演示储罐控制器 `tank` 与 `lv_frame` 方块，及其模型、方块状态、配方与语言条目。

@@ -52,6 +52,13 @@
   "message.stardustindustry.tank.formed": "Tank formed: %s x %s x %s, %s mB capacity.",
   "message.stardustindustry.tank.unformed": "Tank structure broken.",
 
+  "hud.stardustindustry.tank.size": "Tank: %s x %s x %s",
+  "hud.stardustindustry.tank.contents": "Contents: %s (%s)",
+  "hud.stardustindustry.tank.empty": "Empty",
+  "hud.stardustindustry.tank.capacity": "Capacity: %s",
+  "hud.stardustindustry.tank.percent": "(%s%%)",
+  "hud.stardustindustry.tank.unformed": "Tank not formed",
+
   "structure.stardustindustry.need.controller": "the controller on the shell",
   "structure.stardustindustry.need.frame": "a frame block",
   "structure.stardustindustry.need.panel": "a shell block or port",

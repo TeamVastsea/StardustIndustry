@@ -81,6 +81,9 @@ public class StardustIndustry {
             // Fail fast on multiblock authoring mistakes before the world ever loads.
             com.stardustindustry.stardustindustry.multiblock.MultiblockSelfCheck.run();
         });
+        // Highlight-mod integrations. Jade and WTHIT are self-discovering; TOP
+        // needs the explicit, presence-guarded hook this installs.
+        event.enqueueWork(com.stardustindustry.stardustindustry.compat.hud.HighlightCompat::register);
         LOGGER.info("Stardust Industry common setup complete");
     }
 

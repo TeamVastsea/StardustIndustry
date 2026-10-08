@@ -37,6 +37,14 @@ repositories {
         name = 'BlameJared'
         url = 'https://maven.blamejared.com'
     }
+    // Highlight-tooltip mods (Jade/WTHIT/TOP) are shipped as loose jars under
+    // libs/ rather than consumed as maven coordinates: they move fast, their
+    // maven groups drift between versions, and pinning an exact jar in-tree is
+    // the only way the API we compile against is the one a player runs.
+    flatDir {
+        name = 'localLibs'
+        dirs 'libs'
+    }
 }
 
 base {
@@ -131,6 +139,27 @@ dependencies {
     compileOnly "mezz.jei:jei-${minecraft_version}-neoforge-api:${jei_version}"
     // We add the full version to localRuntime, not runtimeOnly, so that we do not publish a dependency on it
     localRuntime "mezz.jei:jei-${minecraft_version}-neoforge:${jei_version}"
+
+    // Highlight-tooltip mods.
+    //
+    // They are compileOnly: their APIs turn up in our source, but a player who
+    // runs only some of them must still load the mod, so nothing we ship may
+    // hard-require any of them. Each plugin is guarded by its own discovery
+    // mechanism (a @WailaPlugin annotation for Jade/WTHIT, an IMC message for
+    // TOP) and only loads when that mod is present.
+    //
+    // They are also localRuntime so the dev client has all three running and
+    // the tooltips can be tested without hand-copying jars into run/client/mods.
+    compileOnly "localLibs:jade-1.21.1-neoforge-15.10.6:"
+    compileOnly "localLibs:wthit-1.21.1-neo-12.10.2:"
+    compileOnly "localLibs:theoneprobe-1.21-neo-12.0.8:"
+
+    localRuntime "localLibs:jade-1.21.1-neoforge-15.10.6:"
+    localRuntime "localLibs:wthit-1.21.1-neo-12.10.2:"
+    localRuntime "localLibs:theoneprobe-1.21-neo-12.0.8:"
+    // WTHIT hard-requires Bad Packets; it is only a runtime companion of WTHIT
+    // (nothing in our source references it), so it never needs a compile jar.
+    localRuntime "localLibs:badpackets-neo-0.8.2:"
 
     // Example mod dependency using a mod jar from ./libs with a flat dir repository
     // This maps to ./libs/coolmod-${mc_version}-${coolmod_version}.jar

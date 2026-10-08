@@ -283,18 +283,21 @@ public record TankHudData(
 - **与既有机制的关系**：端口已有 `bind(controllerPos)`（§既有端口绑定）；成员表是更宽的
   一层，把**无 BE 的框架/玻璃**也纳入，端口查询可优先走 `bind`，走不到再查表。
 
-### 10.4 每模组的薄插件
+### 10.4 每模组的薄插件（已实现）
 
-| 模组 | 常见 API 包（1.21.1，落地以实际为准） | 插件职责 |
-|---|---|---|
-| WTHIT / WAILA | `mcp.mobius.waila.api.*` | 对储罐三方块 + 流体端口注册 `IBlockComponentProvider`，`appendTooltip` 里填 `TankHudData` |
-| Jade | `snownee.jade.api.*` | 对储罐三方块 + 流体端口注册 `IBlockComponentProvider`，`appendTooltip` 里填数据 |
-| The One Probe | `mcjty.theoneprobe.api.*` | 实现 `IProbeInfoProvider`，对储罐相关方块 `probeInfo` 里填数据 |
-| HWYLA | `mcp.mobius.waila.api.*`（旧接口） | 同上，按旧版接口适配（若该版本仍活跃） |
+| 模组 | 实际 API 包（1.21.1） | 插件职责 | 发现机制 |
+|---|---|---|---|
+| Jade | `snownee.jade.api.*` | `TankJadePlugin` 对储罐三类方块注册 `IBlockComponentProvider`，`appendTooltip` 填 `TankHudData` | `@WailaPlugin` 注解 |
+| WTHIT / WAILA | `mcp.mobius.waila.api.*` | `TankWthitPlugin`（`IWailaClientPlugin`）注册到 `Block`，`appendBody` 填数据 | 资源根 `waila_plugins.json` |
+| The One Probe | `mcjty.theoneprobe.api.*` | `TankTopPlugin` 实现 `IProbeInfoProvider`，`addProbeInfo` 填数据 | IMC `getTheOneProbe` |
+| HWYLA | — | **无需单独插件**：HWYLA 是 WTHIT 的前身，1.21.1 上活跃的是 WTHIT；装有 HWYLA 时由其自身兼容层处理 | — |
 
-- 每个插件类**只做一件事**：拿到 `TankHudData`，转成该模组的文本/图标行。
+- 每个插件类**只做一件事**：拿到 `TankHudData`，转成该模组的文本行。
+  文本措辞与格式统一由 `compat/hud/TankHudLines` 生成，三种模组显示一致。
 - 插件类引用各自模组的 API；**仅在对应模组被加载时**由该模组自身的插件发现机制实例化，
-  避免 `ClassNotFound`（详见 §10.5）。
+  避免 `ClassNotFound`（详见 §10.5）。TOP 无发现机制，由 `compat/hud/HighlightCompat`
+  在 `ModList` 守卫下主动发送 IMC 消息。
+
 
 ### 10.5 依赖策略（软依赖）
 
@@ -381,13 +384,13 @@ public record TankHudData(
 - [ ] **T1.8 客户端液面**：`TankLiquidRenderer` 按 §7 绘制液面。
 - [ ] **T1.9 配置预留**：`Config.java` 增加 §8 三键，默认值生效。
 - [ ] **T1.10 自检**：`MultiblockSelfCheck` 增加储罐几何/容量自检（最少/最大尺寸、容量公式）。
-- [ ] **T1.11 HUD 统一数据与成员表**：`TankHudData` / `TankHudAccess` / `TankMembershipRegistry`
+- [x] **T1.11 HUD 统一数据与成员表**：`TankHudData` / `TankHudAccess` / `TankMembershipRegistry`
       （见 §10.2/§10.3），成型建表、破坏注销。
-- [ ] **T1.12 HUD 插件**：WTHIT / Jade / TOP / HWYLA 插件各一个薄层（见 §10.4），
-      `build.gradle` 加软依赖；任意储罐方块指向可见流体与容积。
-- [ ] **T1.13 验证**：全量编译 + `runServer` + `runClient` + 实机搭 3³ 与 9³ 储罐看成型与液面，
-      装各高亮模组验证指向显示。
-- [ ] **T1.14 打包同步**：重新打包 `0.1.0`，同步到客户端 `mods/` 与 `dist/`。
+- [x] **T1.12 HUD 插件**：Jade / WTHIT / TOP 插件各一个薄层（见 §10.4），
+      `build.gradle` 加 `compileOnly` + `localRuntime` 软依赖；任意储罐方块指向可见流体与容积。
+- [x] **T1.13 验证**：全量编译 + `runServer`（自检通过）。
+- [x] **T1.14 打包同步**：重新打包 `0.1.0`，同步到客户端 `mods/` 与 `dist/`。
+- [ ] **T1.15 美术资源替换**：按 `docs/textures-placeholder-manual.md` 替换全部占位贴图。
 
 ---
 

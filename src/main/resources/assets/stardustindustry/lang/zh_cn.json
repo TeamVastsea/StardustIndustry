@@ -52,6 +52,13 @@
   "message.stardustindustry.tank.formed": "储罐已成型：%s × %s × %s，容量 %s mB。",
   "message.stardustindustry.tank.unformed": "储罐结构已破坏。",
 
+  "hud.stardustindustry.tank.size": "储罐：%s × %s × %s",
+  "hud.stardustindustry.tank.contents": "内容物：%s（%s）",
+  "hud.stardustindustry.tank.empty": "空",
+  "hud.stardustindustry.tank.capacity": "容量：%s",
+  "hud.stardustindustry.tank.percent": "（%s%%）",
+  "hud.stardustindustry.tank.unformed": "储罐未成型",
+
   "structure.stardustindustry.need.controller": "贴在壳上的控制器",
   "structure.stardustindustry.need.frame": "框架块",
   "structure.stardustindustry.need.panel": "外壳块或端口",
