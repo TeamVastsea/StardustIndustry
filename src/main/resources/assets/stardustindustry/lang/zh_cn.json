@@ -42,6 +42,20 @@
   "screen.stardustindustry.machine_params.fluid_out": "输出速率：%s mB/s",
   "screen.stardustindustry.machine_params.dismantle": "拆除",
 
+  "screen.stardustindustry.machine_params.vessel.formed": "多方块结构已成型！",
+  "screen.stardustindustry.machine_params.vessel.unformed": "多方块结构未成型。",
+  "screen.stardustindustry.machine_params.vessel.size": "多方块尺寸：%sX%sX%s",
+  "screen.stardustindustry.machine_params.vessel.structure": "多方块结构：%s",
+  "screen.stardustindustry.machine_params.vessel.capacity": "储罐容积：%sB",
+  "screen.stardustindustry.machine_params.vessel.fluid": "存储流体：%s",
+  "screen.stardustindustry.machine_params.vessel.ports": "已安装端口：%s",
+  "screen.stardustindustry.machine_params.vessel.ports.none": "无",
+  "screen.stardustindustry.machine_params.vessel.port_entry": "%s流体端口 x%s",
+  "screen.stardustindustry.machine_params.vessel.max_rate": "最大传输速率：%s",
+  "screen.stardustindustry.machine_params.vessel.rate_entry": "%s %sB/s",
+
+  "structure.stardustindustry.tank": "储罐",
+
   "message.stardustindustry.install.success": "机器已安装。",
   "message.stardustindustry.install.already": "这台机器已经安装过了。",
   "message.stardustindustry.install.no_provider": "这台机器不使用安装流程。",

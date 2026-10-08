@@ -37,7 +37,7 @@ public final class ModRegistries {
             () -> CreativeModeTab.builder()
                     .title(Component.translatable("itemGroup." + StardustIndustry.MODID + ".main"))
                     .withTabsBefore(CreativeModeTabs.COMBAT)
-                    .icon(() -> net.minecraft.world.item.ItemStack.EMPTY)
+                    .icon(() -> new net.minecraft.world.item.ItemStack(ModBlocks.TANK_SHELL_ITEM.get()))
                     .displayItems((parameters, output) -> {
                         // Populated by ModItems and the feature packages.
                     })

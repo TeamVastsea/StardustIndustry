@@ -539,7 +539,7 @@ public abstract class MachineBlockEntity extends BlockEntity {
      * buffer, and how many fillers were counted. The client receives them as
      * data and never recomputes anything.</p>
      */
-    public final MachineParamsData paramsData() {
+    public MachineParamsData paramsData() {
         var eval = evaluation;
         String tierName = eval != null && eval.tier() != null ? eval.tier().getSerializedName() : "";
         var mods = modifiers();
@@ -592,7 +592,21 @@ public abstract class MachineBlockEntity extends BlockEntity {
                 fluidAmount,
                 fluidCapacity,
                 fluidInRate,
-                fluidOutRate);
+                fluidOutRate,
+                tankParams());
+    }
+
+    /**
+     * The tank-specific display block for this machine, or {@code null}.
+     *
+     * <p>Machines that are vessels rather than processors override this to
+     * describe themselves as a size, a set of ports and a fluid; everything else
+     * inherits {@code null} and the screen falls back to the generic layout. The
+     * hook exists so a tank adds no fields to the common snapshot and no copy of
+     * it.</p>
+     */
+    protected MachineParamsData.TankParams tankParams() {
+        return null;
     }
 
     /** The original states recorded at install time, for display and dismantling. */

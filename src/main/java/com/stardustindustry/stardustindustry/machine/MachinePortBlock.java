@@ -3,12 +3,17 @@ package com.stardustindustry.stardustindustry.machine;
 import com.stardustindustry.stardustindustry.multiblock.PartRole;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.ItemInteractionResult;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.BlockHitResult;
 
 /**
  * A machine port: the block that connects a multiblock to the outside world.
@@ -86,6 +91,33 @@ public class MachinePortBlock extends Block implements EntityBlock {
             throw new IllegalStateException("Port block used before its block entity type was wired: " + role);
         }
         return typeSupplier.create(pos, state);
+    }
+
+    /**
+     * Lets a player move fluid through a fluid port by hand.
+     *
+     * <p>A right-click with a filled bucket or a fluid container pours into the
+     * machine, and a right-click with an empty one draws from it, which is what
+     * a player reaches for before any pipes exist. The work is delegated to
+     * NeoForge's fluid handler interaction so bucket, bottle and any other
+     * container a mod adds all behave the same, and so the exact amount and the
+     * resulting stack are the platform's problem rather than this block's.</p>
+     *
+     * <p>Only fluid ports take part. An item or energy port passes, leaving the
+     * click for whatever the held item would otherwise do.</p>
+     */
+    @Override
+    protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level, BlockPos pos,
+                                              Player player, InteractionHand hand, BlockHitResult hit) {
+        if (role != PartRole.PORT_FLUID) {
+            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+        }
+        // A port that is not bound to a machine exposes no fluid handler, and the
+        // helper simply reports that nothing happened.
+        if (net.neoforged.neoforge.fluids.FluidUtil.interactWithFluidHandler(player, hand, level, pos, hit.getDirection())) {
+            return ItemInteractionResult.sidedSuccess(level.isClientSide());
+        }
+        return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
     }
 
     /** The port at {@code pos}, or {@code null} when it is not a port. */

@@ -42,6 +42,20 @@
   "screen.stardustindustry.machine_params.fluid_out": "Output rate: %s mB/s",
   "screen.stardustindustry.machine_params.dismantle": "Dismantle",
 
+  "screen.stardustindustry.machine_params.vessel.formed": "Multiblock structure formed!",
+  "screen.stardustindustry.machine_params.vessel.unformed": "Multiblock structure not formed.",
+  "screen.stardustindustry.machine_params.vessel.size": "Multiblock size: %sX%sX%s",
+  "screen.stardustindustry.machine_params.vessel.structure": "Multiblock structure: %s",
+  "screen.stardustindustry.machine_params.vessel.capacity": "Tank capacity: %sB",
+  "screen.stardustindustry.machine_params.vessel.fluid": "Stored fluid: %s",
+  "screen.stardustindustry.machine_params.vessel.ports": "Installed ports: %s",
+  "screen.stardustindustry.machine_params.vessel.ports.none": "None",
+  "screen.stardustindustry.machine_params.vessel.port_entry": "%s fluid port x%s",
+  "screen.stardustindustry.machine_params.vessel.max_rate": "Maximum transfer rate: %s",
+  "screen.stardustindustry.machine_params.vessel.rate_entry": "%s %sB/s",
+
+  "structure.stardustindustry.tank": "Tank",
+
   "message.stardustindustry.install.success": "Machine installed.",
   "message.stardustindustry.install.already": "This machine is already installed.",
   "message.stardustindustry.install.no_provider": "This machine does not use installation.",

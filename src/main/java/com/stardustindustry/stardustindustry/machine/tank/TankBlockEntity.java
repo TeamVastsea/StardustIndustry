@@ -2,6 +2,7 @@ package com.stardustindustry.stardustindustry.machine.tank;
 
 import com.stardustindustry.stardustindustry.capability.ResourceType;
 import com.stardustindustry.stardustindustry.machine.MachineBlockEntity;
+import com.stardustindustry.stardustindustry.machine.MachineParamsData;
 import com.stardustindustry.stardustindustry.machine.MachineTier;
 import com.stardustindustry.stardustindustry.machine.module.FluidBufferModule;
 import com.stardustindustry.stardustindustry.multiblock.provider.StructureEvaluation;
@@ -143,5 +144,68 @@ public class TankBlockEntity extends MachineBlockEntity {
             }
         }
         syncedCapacityMb = tag.getInt("TankCapacity");
+    }
+
+    /**
+     * Describes the tank for its parameter screen: what it is, how big it is,
+     * what is inside it, and which fluid ports are bolted to it.
+     *
+     * <p>The ports are counted from the last structure evaluation rather than
+     * from a stored list, so re-scanning the structure is also what refreshes
+     * the screen. Each port's tier is read back off its block, which is the same
+     * value the port's throughput is derived from.</p>
+     */
+    @Override
+    protected MachineParamsData.TankParams tankParams() {
+        StructureEvaluation evaluation = evaluation();
+        int sizeX = 0, sizeY = 0, sizeZ = 0;
+        java.util.Map<String, Integer> portCounts = new java.util.LinkedHashMap<>();
+        String maxRateTier = "";
+        int maxRate = 0;
+
+        if (evaluation != null && evaluation.formed() && level != null) {
+            int[] size = evaluatedSize();
+            if (size.length == 3) {
+                sizeX = size[0];
+                sizeY = size[1];
+                sizeZ = size[2];
+            }
+            for (var entry : evaluation.roles().entrySet()) {
+                if (entry.getValue() != com.stardustindustry.stardustindustry.multiblock.BlockRole.PORT) {
+                    continue;
+                }
+                var portBlock = level.getBlockState(entry.getKey()).getBlock();
+                if (!(portBlock instanceof com.stardustindustry.stardustindustry.machine.MachinePortBlock port)
+                        || port.tier() == null) {
+                    continue;
+                }
+                String tier = port.tier().getSerializedName();
+                portCounts.merge(tier, 1, Integer::sum);
+                if (port.tier().fluidTransfer() > maxRate) {
+                    maxRate = port.tier().fluidTransfer();
+                    maxRateTier = tier;
+                }
+            }
+        }
+
+        StringBuilder ports = new StringBuilder();
+        portCounts.forEach((tier, count) -> {
+            if (!ports.isEmpty()) {
+                ports.append(',');
+            }
+            ports.append(tier).append(':').append(count);
+        });
+
+        String fluidKey = "";
+        String fluidNameEn = "";
+        if (!fluid.fluid().isEmpty()) {
+            fluidKey = fluid.fluid().getFluidType().getDescriptionId();
+            // The server's language is always English, so this resolves the
+            // English name for a client that runs in another language.
+            fluidNameEn = fluid.fluid().getHoverName().getString();
+        }
+
+        return new MachineParamsData.TankParams("tank", sizeX, sizeY, sizeZ, fluidKey, fluidNameEn,
+                ports.toString(), maxRateTier, maxRate);
     }
 }

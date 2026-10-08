@@ -20,6 +20,15 @@
   但 `wirePorts()` 只接了三种无等级端口，漏了 `lv_item_port`/`lv_fluid_port`/`lv_energy_port`
   （放置时 `newBlockEntity` 抛 `Port block used before its block entity type was wired`）。
   现在各端口类型共享同一方块实体类型并全部接线，类型构造器也纳入对应 LV 方块。
+- **修复创造模式物品栏图标为空**：`MAIN_TAB` 的图标此前是 `ItemStack.EMPTY`（空框），
+  改为储罐外壳。
+
+### 变更
+- **储罐参数界面改为专用格式**：Shift+右键储罐任意部件，界面显示
+  「多方块结构已成型！（亮黄）／多方块尺寸／多方块结构／储罐容积（B）／存储流体（中英双语）／
+  已安装端口／最大传输速率」，面板改为浅灰底 + 深色字，储罐不再显示无意义的等级/速度行，
+  也不提供拆除按钮。快照新增 `MachineParamsData.TankParams`（服务端附带，普通机器为 `null`）。
+- **流体端口支持手桶交互**：手持容器右击流体端口可灌入 / 取出流体。
 
 ### 新增
 - **真正的动态储罐多方块**：新增 `tank_frame`（12 条棱）、`tank_shell`（6 个面，其中一块承载方块实体，作为锚点与控制器）、`tank_glass`（透光面）。
