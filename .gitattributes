@@ -3,3 +3,7 @@
 # are changed when only line endings change.
 src/generated/**/.cache/* text eol=lf
 src/generated/**/*.json text eol=lf
+
+# Shell scripts must keep LF: they run on the Linux CI runner, where a CRLF
+# shebang line is an "bad interpreter" error.
+*.sh text eol=lf
