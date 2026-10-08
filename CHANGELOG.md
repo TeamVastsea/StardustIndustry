@@ -68,6 +68,10 @@
 ### 测试
 - 将机械动力 Create `1.21.1-6.0.10`（内嵌 Flywheel/Ponder/Registrate）拷贝进开发环境
   一并启动，验证与其流体管道、动力臂与放置逻辑的兼容性。
+- 开发环境与本地测试整合包同时接入 **Immersive Engineering `1.21.1-12.4.2-194`**
+  与 **Mekanism `1.21.1-10.7.19.85`**（含 IE 依赖 cloth-config / curios / geckolib /
+  forgified-fabric-api），用于后续流体管道与电器（FE）兼容性测试；两者均已在开发客户端成功加载。
+- 本地测试整合包的高亮模组**只保留 The One Probe** 一个，避免多个高亮叠加。
 
 ### 新增
 - **真正的动态储罐多方块**：新增 `tank_frame`（12 条棱）、`tank_shell`（6 个面，其中一块承载方块实体，作为锚点与控制器）、`tank_glass`（透光面）。
@@ -93,6 +97,8 @@
 
 ### 文档
 - 新增 `docs/textures-placeholder-manual.md`：占位材质总清单，逐一标明每张贴图对应哪个方块、用途与建议美术方向，供美术替换。
+- 新增 `docs/dev-environment.md`：开发环境与本地测试整合包约定（目录、模组清单、高亮只留 TOP、
+  jar 输出流程、各兼容模组测试现状）。
 
 ### 移除
 - 旧的演示储罐控制器 `tank` 与 `lv_frame` 方块，及其模型、方块状态、配方与语言条目。
