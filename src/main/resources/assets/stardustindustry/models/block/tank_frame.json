@@ -1,6 +1,6 @@
 {
   "parent": "minecraft:block/cube_all",
   "textures": {
-    "all": "stardustindustry:block/lv_frame"
+    "all": "stardustindustry:block/tank_frame"
   }
 }

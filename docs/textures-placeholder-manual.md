@@ -5,6 +5,9 @@
 > 仅为让方块在游戏里可辨认、可测试。正式美术资源到位后，请按本表逐一替换。
 >
 > 最后更新：0.1.0（高亮模组兼容 + 储罐动态多方块）
+>
+> 关于储罐框架/外壳/玻璃的**连接材质方案与美术出图清单**，请另见
+> [`docs/connected-textures-plan.md`](connected-textures-plan.md)。
 
 ---
 
@@ -29,18 +32,28 @@
 
 ### 2.1 储罐（Tank）——**优先替换**
 
-| 贴图文件 | 对应方块 | 用途 / 贴图键 | 当前占位来源 | 建议美术方向 |
-| --- | --- | --- | --- | --- |
-| `textures/block/lv_frame.png` | **储罐框架** `tank_frame` | `cube_all` 全六面 | 复用旧 LV 框架占位 | 金属桁架/角钢，强调“边缘骨架”，与外壳区分 |
-| `textures/block/tank_shell.png` *(缺失)* | **储罐外壳** `tank_shell` | `orientable` 的 `front` | ⚠️ 模型引用 `tank_front.png` | 需要独立钢板外壳贴图（正面） |
-| `textures/block/tank_side.png` | **储罐外壳** `tank_shell` | `orientable` 的 `side` | 旧坦克侧面占位 | 钢板外壳侧面 |
-| `textures/block/tank_top.png` | **储罐外壳** `tank_shell` | `orientable` 的 `top` | 旧坦克顶面占位 | 钢板外壳顶面 |
-| `textures/block/tank_front.png` | **储罐外壳** `tank_shell` | `orientable` 的 `front` | 旧坦克正面占位 | 钢板外壳正面 |
-| （无独立贴图） | **钢化玻璃** `tank_glass` | `cube_all`（`render_type: translucent`）→ 引用原版 `minecraft:block/glass` | 原版玻璃 | **可替换为自制钢化玻璃贴图**（见 §四·待办 1） |
+> **连接材质**：储罐采用**方案 A（原生 6 面连接，两套贴图）**。每个参与连接的贴图都要出
+> **两张**：带边框（外露时用）与 `_inner` 无边框（与该方向邻居相连时用）。
+> 程序不做 UV 裁切。详见 [`docs/connected-textures-plan.md`](connected-textures-plan.md)。
 
-> 说明：`tank_shell` 目前用的是 `minecraft:block/orientable` 父模型（区分 top/front/side），
-> 因此外壳需要 **3 张** 独立贴图；`tank_front.png` 与 `tank_shell.png` 命名不一致，
-> 详见 §四·待办 2 的整理建议。
+| 贴图文件 | 对应方块 | 用途 / 贴图键 | 建议美术方向 |
+| --- | --- | --- | --- |
+| `textures/block/tank_frame.png` | **储罐框架** `tank_frame` | `cube_all` 全六面（带边框） | 金属桁架/角钢，强调“边缘骨架” |
+| `textures/block/tank_frame_inner.png` | 同上 | 相连方向用的**无边框**版 | 连续纹理 |
+| `textures/block/tank_shell_top.png` | **储罐外壳** `tank_shell` | `cube_bottom_top` 的 `top`/`bottom`（带边框） | 钢板顶面 |
+| `textures/block/tank_shell_top_inner.png` | 同上 | 相连方向的无边框版 | 连续纹理 |
+| `textures/block/tank_shell_side.png` | **储罐外壳** `tank_shell` | `cube_bottom_top` 的 `side`（带边框） | 钢板侧面 |
+| `textures/block/tank_shell_side_inner.png` | 同上 | 相连方向的无边框版 | 连续纹理 |
+| `textures/block/tank_glass.png` | **钢化玻璃** `tank_glass` | `cube_all`（`render_type: translucent`，带边框，**须带 alpha**） | 自制钢化玻璃，中心足够透 |
+| `textures/block/tank_glass_inner.png` | 同上 | 相连方向的无边框版（**须带 alpha**） | 连续玻璃 |
+
+> 说明：外壳模型已从旧版 `orientable`（top/front/side 三面）**简化为 `cube_bottom_top`**
+> （top + side 两面）。原因：连接覆盖模型按**世界方向**映射贴图，若外壳随 `facing` 旋转，
+> 连接方向会与贴图朝向错位。去掉正面区分后，连接方向与贴图一一对应。
+> 原 `tank_front` 贴图（旧储罐遗留）不再使用。
+>
+> 全部 18 个连接覆盖模型（`tank_frame/shell/glass_conn_<方向>.json`）由
+> `scripts/gen-tank-conn-models.ps1` 生成，占位贴图由 `scripts/gen-tank-conn-textures.py` 生成。
 
 ### 2.2 机器与结构
 
@@ -103,22 +116,15 @@
 
 ## 四、待办与已知问题（美术/程序需协同）
 
-1. **钢化玻璃 `tank_glass` 目前直接引用原版玻璃**（`minecraft:block/glass`）。
-   计划新增 `textures/block/tank_glass.png`，并把
-   `models/block/tank_glass.json` 的 `all` 指向它。
-   —— 对应 `docs/tank-multiblock-design.md` 中“玻璃让玩家看到液位”的要求。
-
-2. **储罐外壳贴图命名不一致**：外壳模型 `tank_shell.json` 引用的正面贴图叫
-   `tank_front`（旧坦克遗留），其余是 `tank_top/side`。
-   建议统一为 `tank_shell_top/_side/_front`，并同步改 model JSON（需程序侧配合）。
-
-3. **储罐框架复用了旧 LV 框架贴图 `lv_frame`**。框架与外壳视觉上应明确区分
-   （框架=骨架，外壳=实心钢板）。正式资源到位后，建议新增独立 `tank_frame.png`。
-
-4. **旧坦克遗留贴图**：`tank_front.png / tank_side.png / tank_top.png` 是上一版
-   单方块坦克的遗留资源，现被新储罐外壳暂时复用。美术出图后应确认是否全部重新绘制。
-
-5. 所有占位贴图均为纯色块，**没有任何像素级细节**，请勿直接用于发布版本。
+1. ~~钢化玻璃引用原版玻璃~~ **已解决**：新增 `tank_glass.png`（占位），模型已指向它。
+2. ~~外壳贴图命名不一致~~ **已解决**：外壳模型改为 `cube_bottom_top`（top/side 两面），
+   统一使用 `tank_shell_top` / `tank_shell_side`；旧 `tank_front` 不再使用。
+3. ~~框架复用旧 LV 框架贴图~~ **已解决**：新增独立 `tank_frame.png`（占位）。
+4. **旧储罐遗留贴图可删除**：`tank_front.png / tank_side.png / tank_top.png` 已无任何模型引用，
+   可在美术确认后删除（`lv_frame.png` 仍被多方块基座使用，**不要删**）。
+5. **连接贴图的 `_inner` 系列**：储罐框架/外壳/玻璃各需带边框 + `_inner` 两张，共 8 张新图
+   （见 §2.1 与 `docs/connected-textures-plan.md`）。
+6. 所有占位贴图均为纯色块，**没有任何像素级细节**，请勿直接用于发布版本。
 
 ---
 

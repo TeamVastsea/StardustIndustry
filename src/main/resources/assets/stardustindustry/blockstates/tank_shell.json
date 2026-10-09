@@ -1,8 +1,5 @@
 {
   "variants": {
-    "facing=north": { "model": "stardustindustry:block/tank_shell" },
-    "facing=east":  { "model": "stardustindustry:block/tank_shell", "y": 90 },
-    "facing=south": { "model": "stardustindustry:block/tank_shell", "y": 180 },
-    "facing=west":  { "model": "stardustindustry:block/tank_shell", "y": 270 }
+    "": { "model": "stardustindustry:block/tank_shell" }
   }
 }

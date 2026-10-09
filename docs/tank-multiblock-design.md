@@ -452,6 +452,15 @@ public record TankHudData(
       提亮才显示正常（这正是「开夜视就对了」的原因）。修复：`TankLiquidRenderer` 改为采样
       **内腔中心**的天光/块光（`LightLayer.SKY/BLOCK`），并设下限（块光 ≥4、天光 ≥6），
       使暗室中的储罐也能看清液体而不是一团黑。
+- [x] **T1.25 唯一控制器（多锚点根因）**：每个 `tank_shell` 方块都创建了 `TankBlockEntity`，
+      于是整面外壳墙上的**每一个** shell 都独立成型：各自广播一条「储罐已成型」（提示数量随
+      表面积增长，9×9×9 出现几十条）、各自渲染一份流体（表现为**一层恒满 + 一层跟随液位**）、
+      HUD 每次可能查到不同锚点（表现为**跳变**）。修复：`TankStructureProvider` 引入
+      **确定性唯一锚点**——取连通外壳中坐标最小的 `tank_shell` 作为锚点；其余 shell 的评估
+      一律返回未成型（无失败项），故不起作用、不广播、不渲染。
+- [x] **T1.26 玻璃接缝**：玻璃是 `noOcclusion`，相邻两块的重合面都会被渲染，两条半透明面片
+      叠加在每格边界形成**亮缝网格**。修复：`TankGlassBlock.skipRendering` 在相邻方块为同类
+      玻璃时跳过该面，整面玻璃从两侧看都是一整块。
 - [x] **T1.22 删除无等级端口**：移除 `item_port`/`fluid_port`/`energy_port` 及其资源，
       端口一律带等级前缀（当前仅 LV，MV/HV/EHV 按同模式扩展）。
 - [ ] **T1.15 美术资源替换**：按 `docs/textures-placeholder-manual.md` 替换全部占位贴图。

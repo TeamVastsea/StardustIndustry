@@ -30,7 +30,8 @@ import net.minecraft.world.level.block.state.BlockState;
  * <ul>
  *   <li>Every cell that touches two or three edges must be a {@code tank_frame}.</li>
  *   <li>Every face cell (one edge) must be a {@code tank_shell}, {@code tank_glass}
- *       or a tiered fluid port. Ports never sit on an edge.</li>
+ *       or a tiered fluid port. Ports never sit on an edge. The floor (the lowest
+ *       face layer) may not be glass: it must be a solid panel or a fluid port.</li>
  *   <li>Every interior cell must be air. A tank is a hollow container; a block
  *       inside it is a build error, reported with its position.</li>
  *   <li>Each axis is between {@value Config#TANK_MIN_SIZE} and
@@ -96,6 +97,21 @@ public final class TankStructureProvider implements StructureProvider {
             }
         }
 
+        // 1b. Exactly one shell cell owns the tank.
+        //
+        // Every tank_shell block creates a block entity, so a wall of them would
+        // otherwise produce a controller per panel: each one evaluates the same
+        // box, forms independently, announces itself, and renders its own copy of
+        // the fluid. That is the "one full layer plus one draining layer" the
+        // renderer showed and the burst of formation messages, whose count scaled
+        // with the surface area. The anchor is therefore chosen deterministically
+        // — the shell cell with the smallest coordinates in the connected shell —
+        // and any other shell block's evaluation reports the tank as unformed.
+        BlockPos canonicalAnchor = canonicalAnchor(level, shell);
+        if (canonicalAnchor != null && !canonicalAnchor.equals(controller)) {
+            return StructureEvaluation.failed(null, List.of(), roles, Map.of());
+        }
+
         // 2. Validate every cell of the box.
         for (BlockPos pos : BlockPos.betweenClosed(bounds.min(), bounds.max())) {
             BlockPos world = pos.immutable();
@@ -118,8 +134,19 @@ public final class TankStructureProvider implements StructureProvider {
                 // Face: shell, glass or a tiered fluid port.
                 if (isTieredFluidPort(state)) {
                     roles.put(world, BlockRole.PORT);
-                } else if (state.is(ModBlocks.TANK_SHELL.get()) || state.is(ModBlocks.TANK_GLASS.get())) {
+                } else if (state.is(ModBlocks.TANK_SHELL.get())) {
                     roles.put(world, BlockRole.PANEL);
+                } else if (state.is(ModBlocks.TANK_GLASS.get())) {
+                    // Glass is allowed on the sides and the lid, but not on the
+                    // floor: the bottom of a container carries the weight and
+                    // must be a solid panel or a drain port. A glass floor is a
+                    // build error, reported like any other wrong panel.
+                    if (world.getY() == bounds.min().getY()) {
+                        failures.add(new ScanFailure(world, BlockRole.PANEL,
+                                "structure.stardustindustry.need.panel"));
+                    } else {
+                        roles.put(world, BlockRole.PANEL);
+                    }
                 } else {
                     failures.add(new ScanFailure(world, BlockRole.PANEL, "structure.stardustindustry.need.panel"));
                 }
@@ -154,6 +181,39 @@ public final class TankStructureProvider implements StructureProvider {
         }
         com.stardustindustry.stardustindustry.multiblock.TankMembershipRegistry.clear(level, controller);
         return StructureEvaluation.failed(null, failures, roles, Map.of());
+    }
+
+    /**
+     * The one shell cell that owns the tank: the smallest coordinate among the
+     * {@code tank_shell} blocks of the connected shell.
+     *
+     * <p>Deterministic and independent of build order, so every shell block in
+     * the box agrees on the same anchor and only that one forms. Returns
+     * {@code null} when the shell has no shell block at all, which cannot happen
+     * for a real tank but keeps the caller safe.</p>
+     */
+    private static BlockPos canonicalAnchor(Level level, Set<BlockPos> shell) {
+        BlockPos best = null;
+        for (BlockPos pos : shell) {
+            if (!level.getBlockState(pos).is(ModBlocks.TANK_SHELL.get())) {
+                continue;
+            }
+            if (best == null || compare(pos, best) < 0) {
+                best = pos;
+            }
+        }
+        return best;
+    }
+
+    /** Lexicographic X, then Y, then Z comparison. */
+    private static int compare(BlockPos a, BlockPos b) {
+        if (a.getX() != b.getX()) {
+            return Integer.compare(a.getX(), b.getX());
+        }
+        if (a.getY() != b.getY()) {
+            return Integer.compare(a.getY(), b.getY());
+        }
+        return Integer.compare(a.getZ(), b.getZ());
     }
 
     /**

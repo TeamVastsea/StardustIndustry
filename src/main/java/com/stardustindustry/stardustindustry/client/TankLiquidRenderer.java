@@ -152,44 +152,63 @@ public final class TankLiquidRenderer {
             }
         }
 
-        // Side walls: one quad per interior column, spanning the fluid height.
+        // Side walls: only the outer skin of the fluid body.
+        //
+        // Every interior cell drawn its own four walls produced coincident quads
+        // at every cell boundary inside the fluid, and the blend lines at those
+        // contacts read as a grid of frames floating inside the liquid. The fluid
+        // is one connected body, so a column only needs a wall where it faces the
+        // cavity's outer edge — its neighbours inside the body are already covered
+        // by the adjacent column's body.
         for (int ix = 0; ix < cellsX; ix++) {
             for (int iz = 0; iz < cellsZ; iz++) {
                 float ax = x0 + ix;
                 float az = z0 + iz;
+                boolean westEdge = ix == 0;
+                boolean eastEdge = ix == cellsX - 1;
+                boolean northEdge = iz == 0;
+                boolean southEdge = iz == cellsZ - 1;
 
-                // North wall (z = az), facing -Z.
-                quad(builder, matrix,
-                        ax, y0, az,
-                        ax, top, az,
-                        ax + 1, top, az,
-                        ax + 1, y0, az,
-                        u0, v0, u1, v1,
-                        red, green, blue, alpha, packedLight, 0, 0, -1);
-                // South wall (z = az + 1), facing +Z.
-                quad(builder, matrix,
-                        ax + 1, y0, az + 1,
-                        ax + 1, top, az + 1,
-                        ax, top, az + 1,
-                        ax, y0, az + 1,
-                        u0, v0, u1, v1,
-                        red, green, blue, alpha, packedLight, 0, 0, 1);
-                // West wall (x = ax), facing -X.
-                quad(builder, matrix,
-                        ax, y0, az + 1,
-                        ax, top, az + 1,
-                        ax, top, az,
-                        ax, y0, az,
-                        u0, v0, u1, v1,
-                        red, green, blue, alpha, packedLight, -1, 0, 0);
-                // East wall (x = ax + 1), facing +X.
-                quad(builder, matrix,
-                        ax + 1, y0, az,
-                        ax + 1, top, az,
-                        ax + 1, top, az + 1,
-                        ax + 1, y0, az + 1,
-                        u0, v0, u1, v1,
-                        red, green, blue, alpha, packedLight, 1, 0, 0);
+                if (northEdge) {
+                    // North wall (z = az), facing -Z.
+                    quad(builder, matrix,
+                            ax, y0, az,
+                            ax, top, az,
+                            ax + 1, top, az,
+                            ax + 1, y0, az,
+                            u0, v0, u1, v1,
+                            red, green, blue, alpha, packedLight, 0, 0, -1);
+                }
+                if (southEdge) {
+                    // South wall (z = az + 1), facing +Z.
+                    quad(builder, matrix,
+                            ax + 1, y0, az + 1,
+                            ax + 1, top, az + 1,
+                            ax, top, az + 1,
+                            ax, y0, az + 1,
+                            u0, v0, u1, v1,
+                            red, green, blue, alpha, packedLight, 0, 0, 1);
+                }
+                if (westEdge) {
+                    // West wall (x = ax), facing -X.
+                    quad(builder, matrix,
+                            ax, y0, az + 1,
+                            ax, top, az + 1,
+                            ax, top, az,
+                            ax, y0, az,
+                            u0, v0, u1, v1,
+                            red, green, blue, alpha, packedLight, -1, 0, 0);
+                }
+                if (eastEdge) {
+                    // East wall (x = ax + 1), facing +X.
+                    quad(builder, matrix,
+                            ax + 1, y0, az,
+                            ax + 1, top, az,
+                            ax + 1, top, az + 1,
+                            ax + 1, y0, az + 1,
+                            u0, v0, u1, v1,
+                            red, green, blue, alpha, packedLight, 1, 0, 0);
+                }
             }
         }
     }

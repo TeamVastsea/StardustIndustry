@@ -32,6 +32,16 @@ import net.neoforged.neoforge.fluids.capability.IFluidHandlerItem;
  * no fluid work of its own, so there is no second handler to race or to disagree
  * with this one.
  *
+ * <h2>Cancel first, transfer second</h2>
+ * The click is cancelled as soon as the target is a fluid port holding a fluid
+ * container, <em>before</em> the port's controller is even resolved. The
+ * controller binding reaches the client a moment after the server, so on the
+ * first click after a tank forms the client's port was still unbound; cancelling
+ * late left a window in which the vanilla bucket ran on the client and left a
+ * spare bucket in the world on top of the one the server moved. Cancelling up
+ * front closes that window: the transfer happens only on the server, which is
+ * authoritative, and no side ever predicts the vanilla action.
+ *
  * <h2>Why the machine's own handler, not the port's</h2>
  * The port's capability caps every operation at its rated throughput — 5000 mB
  * for an LV port. That is right for a pipe, which moves a little each tick, but
@@ -87,8 +97,30 @@ public final class PortFluidInteraction {
             return;
         }
 
-        // The machine the port serves. An unbound port has no machine, so there
-        // is nothing to transfer into and the click is left to the block.
+        // A fluid container on a fluid port is this handler's business on both
+        // sides, so the click is claimed here and never falls through to vanilla.
+        //
+        // This must happen *before* the controller is resolved, because the two
+        // sides can disagree about it: a port binds its controller when the tank
+        // forms, and that binding reaches the client a moment later than the
+        // server. On the first click after forming, the client's port was still
+        // unbound, so the old code returned without cancelling, the vanilla bucket
+        // ran on the client, and the player picked up a spare bucket of fluid in
+        // the world alongside the one the server moved. Cancelling unconditionally
+        // removes that window entirely: the server is the only side that moves
+        // fluid, and the client never predicts the vanilla action.
+        event.setUseBlock(TriState.FALSE);
+        event.setUseItem(TriState.FALSE);
+        event.setCanceled(true);
+        event.setCancellationResult(net.minecraft.world.InteractionResult.SUCCESS);
+
+        if (level.isClientSide()) {
+            // The client only swallows the click; the server owns the transfer.
+            return;
+        }
+
+        // The machine the port serves. An unbound port has no machine; the click
+        // stays swallowed above so nothing spills, and nothing is moved.
         if (!(level.getBlockEntity(pos) instanceof MachinePortBlockEntity portEntity)) {
             return;
         }
@@ -102,42 +134,27 @@ public final class PortFluidInteraction {
         }
         IFluidHandler handler = fluid.capability();
 
-        // The click belongs to the port from here on, whatever it does: a
-        // recognised fluid container on a bound fluid port is this handler's
-        // business. That is what keeps a refused transfer (a fluid the tank does
-        // not hold) from falling through to the bucket and emptying into the
-        // world, and what keeps the port's own block from acting twice.
         boolean creativeDebug = player.isCreative() && player.isShiftKeyDown();
-        if (!level.isClientSide()) {
-            if (creativeDebug) {
-                debugTransfer(container, handler);
-            } else {
-                ItemStack result = containerTransfer(container, handler);
-                if (result != null) {
-                    // The item is consumed one at a time and replaced by whatever
-                    // the container becomes (full bucket -> empty bucket and vice
-                    // versa), so the remainder of a stack is preserved.
-                    held.shrink(1);
-                    if (held.isEmpty()) {
-                        player.setItemInHand(hand, result);
-                    } else if (!player.getInventory().add(result)) {
-                        player.drop(result, false);
-                    }
+        if (creativeDebug) {
+            debugTransfer(container, handler);
+        } else {
+            ItemStack result = containerTransfer(container, handler);
+            if (result != null) {
+                // The item is consumed one at a time and replaced by whatever
+                // the container becomes (full bucket -> empty bucket and vice
+                // versa), so the remainder of a stack is preserved.
+                held.shrink(1);
+                if (held.isEmpty()) {
+                    player.setItemInHand(hand, result);
+                } else if (!player.getInventory().add(result)) {
+                    player.drop(result, false);
                 }
-                // result == null means nothing moved (a different fluid, or the
-                // tank already full of this one): fall through to cancelling
-                // below, so the click is swallowed and the container is untouched.
             }
-            machine.setChanged();
+            // result == null means nothing moved (a different fluid, or the tank
+            // already full of this one): the click is still swallowed and the
+            // container is left untouched.
         }
-
-        // Stop the bucket from also emptying itself into the world. Cancelling
-        // the event stops the block's own use, and the two TriState flags stop
-        // the item's use as well, since a bucket acts from useOn.
-        event.setUseBlock(TriState.FALSE);
-        event.setUseItem(TriState.FALSE);
-        event.setCanceled(true);
-        event.setCancellationResult(net.minecraft.world.InteractionResult.SUCCESS);
+        machine.setChanged();
     }
 
     /**

@@ -18,6 +18,11 @@ import net.minecraft.world.level.block.entity.BlockEntityType;
  * <p>The block itself is thin: it names its block entity type and inherits the
  * placement, neighbour and tick plumbing from {@link MachineBlock}. The
  * structure comes from the block entity's provider.</p>
+ *
+ * <p>The shell renders as an ordinary cube. An earlier attempt gave the tank
+ * panels connected textures so a wall would read as one plate; that is being
+ * handled by a separate add-on mod instead (see {@code docs/connected-textures-plan.md}),
+ * so the base mod keeps the plain block model.</p>
  */
 public class TankShellBlock extends MachineBlock {
 
