@@ -3,6 +3,8 @@ package com.stardustindustry.stardustindustry.compat.hud;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.stardustindustry.stardustindustry.machine.tank.TankMedium;
+
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 
@@ -13,6 +15,10 @@ import net.minecraft.network.chat.MutableComponent;
  * not be able to tell which one they installed by reading a tank tooltip. The
  * wording and the formatting therefore live here, once, and the three plugins
  * only differ in how they hand the finished components to their own API.</p>
+ *
+ * <p>A fluid tank and a gas tank say "fluid" and "gas" respectively; the medium
+ * is spliced into the translation keys, so the same builder serves both without
+ * a branch per line.</p>
  *
  * <p>The lines are returned as a list rather than written into a tooltip so the
  * text can also be reused by GUI code and unit tests without a running client.</p>
@@ -30,15 +36,16 @@ public final class TankHudLines {
      */
     public static List<Component> build(TankHudData data) {
         List<Component> lines = new ArrayList<>(4);
+        TankMedium medium = data.medium();
 
         if (!data.formed()) {
             lines.add(Component.translatable("hud.stardustindustry.tank.unformed"));
-            // The contents are still worth showing: the fluid is not lost just
+            // The contents are still worth showing: the medium is not lost just
             // because a wall was knocked out, and hiding it would look like a
             // glitch.
-            if (data.hasFluid()) {
+            if (data.hasContents()) {
                 lines.add(Component.translatable("hud.stardustindustry.tank.contents",
-                        data.fluidName(), formatAmount(data.fluidAmount())));
+                        data.contentsName(), formatAmount(data.contentsAmount())));
             }
             return lines;
         }
@@ -46,20 +53,24 @@ public final class TankHudLines {
         lines.add(Component.translatable("hud.stardustindustry.tank.size",
                 data.sizeX(), data.sizeY(), data.sizeZ()));
 
-        if (data.hasFluid()) {
+        if (data.hasContents()) {
             lines.add(Component.translatable("hud.stardustindustry.tank.contents",
-                    data.fluidName(), formatAmount(data.fluidAmount())));
+                    data.contentsName(), formatAmount(data.contentsAmount())));
         } else {
             lines.add(Component.translatable("hud.stardustindustry.tank.empty"));
         }
 
         MutableComponent capacity = Component.translatable("hud.stardustindustry.tank.capacity",
                 formatAmount(data.capacityMb()));
-        if (data.hasFluid() && data.capacityMb() > 0) {
+        if (data.hasContents() && data.capacityMb() > 0) {
             capacity.append(" ").append(Component.translatable(
                     "hud.stardustindustry.tank.percent", Math.round(data.fraction() * 100.0f)));
         }
         lines.add(capacity);
+
+        // Which vessel this is: a one-word line so a glance at a wall of steel
+        // tells fluid from gas even before the contents are read.
+        lines.add(Component.translatable("hud.stardustindustry.tank.medium." + medium.id()));
 
         return lines;
     }

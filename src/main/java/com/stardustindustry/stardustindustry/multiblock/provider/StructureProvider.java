@@ -1,9 +1,12 @@
 package com.stardustindustry.stardustindustry.multiblock.provider;
 
+import java.util.Collection;
+
 import com.stardustindustry.stardustindustry.multiblock.StructureDefinition;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 
 /**
@@ -41,5 +44,28 @@ public interface StructureProvider {
      */
     default boolean revalidateWhileFormed() {
         return false;
+    }
+
+    /**
+     * The chunks that must all be loaded for {@link #evaluate} to read truth.
+     *
+     * <p>A structure can straddle a chunk border, and a chunk that is not loaded
+     * reads as air. Evaluating then sees the machine as torn down — it would
+     * report unformed, unbind its ports and, worse, recompute a wrong capacity or
+     * size — even though nothing was actually built or broken. The owner of the
+     * structure therefore asks this before evaluating and simply <em>freezes</em>
+     * the machine until every chunk it spans is loaded again.</p>
+     *
+     * <p>Returning {@code null} means "no restriction": the structure never reads
+     * outside the controller's own chunk, so it can always be evaluated. Machines
+     * that span a known box (a static model) or a bounded region (a dynamic scan)
+     * override this to name the chunks they may touch.</p>
+     *
+     * @param controller world position of the controller block
+     * @param facing     the controller's current horizontal facing
+     * @return the required chunks, or {@code null} when there is no restriction
+     */
+    default Collection<ChunkPos> footprint(BlockPos controller, Direction facing) {
+        return null;
     }
 }

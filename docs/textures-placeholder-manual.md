@@ -18,7 +18,7 @@
 | 分辨率 | 方块贴图 `16×16`（可后续升级 32×32，需同步 `pack.mcmeta`）；物品贴图 `16×16` |
 | 命名 | 小写 + 下划线，与**方块注册名**保持一致；多面方块用 `_top/_bottom/_side/_front` 后缀 |
 | 路径 | 方块：`src/main/resources/assets/stardustindustry/textures/block/<名称>.png`<br>物品：`src/main/resources/assets/stardustindustry/textures/item/<名称>.png` |
-| 透明 | 需要透明/半透明的方块（如钢化玻璃）必须用带 alpha 的 PNG |
+| 透明 | 需要透明/半透明的方块（如工业玻璃）必须用带 alpha 的 PNG |
 | 格式 | PNG，非动画方块不要用 `.mcmeta` |
 
 > ⚠️ **替换时不要改名**。模型（`models/block/*.json`）通过固定的贴图键名引用这些文件；
@@ -32,28 +32,24 @@
 
 ### 2.1 储罐（Tank）——**优先替换**
 
-> **连接材质**：储罐采用**方案 A（原生 6 面连接，两套贴图）**。每个参与连接的贴图都要出
-> **两张**：带边框（外露时用）与 `_inner` 无边框（与该方向邻居相连时用）。
-> 程序不做 UV 裁切。详见 [`docs/connected-textures-plan.md`](connected-textures-plan.md)。
+> **连接材质已从主模组剥离**：现在储罐所有方块都用**普通 cube 模型与默认贴图**，
+> 不再有 `_inner`、也没有连接覆盖模型。连接材质改由将来的**附属模组**处理，
+> 详见 [`docs/connected-textures-plan.md`](connected-textures-plan.md)。
+>
+> **流体/气体储罐共用同一个文档**：框架与工业玻璃两者共用；外壳分流体/气体两套。
 
 | 贴图文件 | 对应方块 | 用途 / 贴图键 | 建议美术方向 |
 | --- | --- | --- | --- |
-| `textures/block/tank_frame.png` | **储罐框架** `tank_frame` | `cube_all` 全六面（带边框） | 金属桁架/角钢，强调“边缘骨架” |
-| `textures/block/tank_frame_inner.png` | 同上 | 相连方向用的**无边框**版 | 连续纹理 |
-| `textures/block/tank_shell_top.png` | **储罐外壳** `tank_shell` | `cube_bottom_top` 的 `top`/`bottom`（带边框） | 钢板顶面 |
-| `textures/block/tank_shell_top_inner.png` | 同上 | 相连方向的无边框版 | 连续纹理 |
-| `textures/block/tank_shell_side.png` | **储罐外壳** `tank_shell` | `cube_bottom_top` 的 `side`（带边框） | 钢板侧面 |
-| `textures/block/tank_shell_side_inner.png` | 同上 | 相连方向的无边框版 | 连续纹理 |
-| `textures/block/tank_glass.png` | **钢化玻璃** `tank_glass` | `cube_all`（`render_type: translucent`，带边框，**须带 alpha**） | 自制钢化玻璃，中心足够透 |
-| `textures/block/tank_glass_inner.png` | 同上 | 相连方向的无边框版（**须带 alpha**） | 连续玻璃 |
+| `textures/block/tank_frame.png` | **储罐框架** `tank_frame`（共用） | `cube_all` 全六面 | 金属桁架/角钢，强调“边缘骨架” |
+| `textures/block/fluid_tank_shell_top.png` | **流体储罐外壳** `fluid_tank_shell` | `cube_bottom_top` 的 `top`/`bottom` | 钢板顶面 |
+| `textures/block/fluid_tank_shell_side.png` | **流体储罐外壳** `fluid_tank_shell` | `cube_bottom_top` 的 `side` | 钢板侧面 |
+| `textures/block/gas_tank_shell_top.png` | **气体储罐外壳** `gas_tank_shell` | `cube_bottom_top` 的 `top`/`bottom` | 气体罐顶面（区别于流体） |
+| `textures/block/gas_tank_shell_side.png` | **气体储罐外壳** `gas_tank_shell` | `cube_bottom_top` 的 `side` | 气体罐侧面 |
+| `textures/block/industrial_glass.png` | **工业玻璃** `industrial_glass`（共用） | `cube_all`（`render_type: translucent`，**须带 alpha**） | 自制工业玻璃，中心足够透 |
+| `textures/block/gas_white.png` | 无（**纯功能贴图**） | 气体渲染器采样 | **必须保持 100% 纯白、不透明**；气体颜色由此 `纹理 × 色` 决定，改动会导致所有气体变色 |
 
-> 说明：外壳模型已从旧版 `orientable`（top/front/side 三面）**简化为 `cube_bottom_top`**
-> （top + side 两面）。原因：连接覆盖模型按**世界方向**映射贴图，若外壳随 `facing` 旋转，
-> 连接方向会与贴图朝向错位。去掉正面区分后，连接方向与贴图一一对应。
-> 原 `tank_front` 贴图（旧储罐遗留）不再使用。
->
-> 全部 18 个连接覆盖模型（`tank_frame/shell/glass_conn_<方向>.json`）由
-> `scripts/gen-tank-conn-models.ps1` 生成，占位贴图由 `scripts/gen-tank-conn-textures.py` 生成。
+> 说明：外壳模型用 `cube_bottom_top`（top + side 两面）。旧 `tank_front` 贴图（旧储罐遗留）不再使用。
+> 气体储罐外壳贴图**待美术出图**，当前与流体外壳共用占位纹理。
 
 ### 2.2 机器与结构
 
@@ -78,6 +74,9 @@
 | `textures/block/lv_fluid_port_top.png` | **LV 流体端口** `lv_fluid_port` | `top` | 带 LV 标识的流体口 |
 | `textures/block/lv_fluid_port_side.png` | LV 流体端口 | `side` | 同上侧面 |
 | `textures/block/lv_fluid_port_bottom.png` | LV 流体端口 | `bottom` | 同上底面 |
+| `textures/block/lv_gas_port_top.png` | **LV 气体端口** `lv_gas_port` | `top` | 带 LV 标识的气体口（建议与流体口区分，如加一条气路纹） |
+| `textures/block/lv_gas_port_side.png` | LV 气体端口 | `side` | 同上侧面 |
+| `textures/block/lv_gas_port_bottom.png` | LV 气体端口 | `bottom` | 同上底面 |
 | `textures/block/lv_energy_port_top.png` | **LV 能量端口** `lv_energy_port` | `top` | 带 LV 标识的能量口 |
 | `textures/block/lv_energy_port_side.png` | LV 能量端口 | `side` | 同上侧面 |
 | `textures/block/lv_energy_port_bottom.png` | LV 能量端口 | `bottom` | 同上底面 |
@@ -116,15 +115,18 @@
 
 ## 四、待办与已知问题（美术/程序需协同）
 
-1. ~~钢化玻璃引用原版玻璃~~ **已解决**：新增 `tank_glass.png`（占位），模型已指向它。
+1. ~~钢化玻璃引用原版玻璃~~ **已解决**：新增工业玻璃占位贴图 `industrial_glass.png`，模型已指向它。
 2. ~~外壳贴图命名不一致~~ **已解决**：外壳模型改为 `cube_bottom_top`（top/side 两面），
-   统一使用 `tank_shell_top` / `tank_shell_side`；旧 `tank_front` 不再使用。
+   统一使用 `fluid_tank_shell_top` / `fluid_tank_shell_side`；旧 `tank_front` 不再使用。
 3. ~~框架复用旧 LV 框架贴图~~ **已解决**：新增独立 `tank_frame.png`（占位）。
-4. **旧储罐遗留贴图可删除**：`tank_front.png / tank_side.png / tank_top.png` 已无任何模型引用，
-   可在美术确认后删除（`lv_frame.png` 仍被多方块基座使用，**不要删**）。
-5. **连接贴图的 `_inner` 系列**：储罐框架/外壳/玻璃各需带边框 + `_inner` 两张，共 8 张新图
-   （见 §2.1 与 `docs/connected-textures-plan.md`）。
-6. 所有占位贴图均为纯色块，**没有任何像素级细节**，请勿直接用于发布版本。
+4. **旧储罐遗留贴图已删除**：`tank_front.png / tank_side.png / tank_top.png`
+   （`lv_frame.png` 仍被多方块基座使用，**不要删**）。
+5. **连接材质暂缓**：`_inner` 系列贴图与连接覆盖模型**已从主模组移除**，
+   改由将来的附属模组处理（见 `docs/connected-textures-plan.md`）。
+6. **气体储罐 / 气体端口贴图待出**：`gas_tank_shell_top.png` / `gas_tank_shell_side.png`
+   需要一套与流体外壳可区分的气体罐外观；`lv_gas_port_top/side/bottom.png` 需要一套
+   与流体端口可区分的气体端口外观（当前均为流体贴图的临时拷贝，见 §2.1 / §2.3）。
+7. 所有占位贴图均为纯色块，**没有任何像素级细节**，请勿直接用于发布版本。
 
 ---
 
@@ -146,8 +148,8 @@
 
 | 类别 | 数量 |
 | --- | --- |
-| 方块贴图（`textures/block`） | 32 |
+| 方块贴图（`textures/block`） | 30（含 1 张功能贴图 `gas_white.png`，非占位） |
 | 物品贴图（`textures/item`） | 2 |
-| 需新增（见 §四） | 2（`tank_glass.png`、建议的 `tank_frame.png`） |
+| 需新增（见 §四） | 0（命名类问题均已解决；气体/接口贴图为临时拷贝，待美术区分） |
 
-> 全部 34 张现存贴图**均为占位**。任何一张出现在正式版本里都视为未完成。
+> 除 `gas_white.png`（纯白功能贴图，必须保持纯白）外，31 张现存贴图**均为占位**。任何一张出现在正式版本里都视为未完成。

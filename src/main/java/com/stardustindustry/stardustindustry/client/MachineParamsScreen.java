@@ -143,7 +143,9 @@ public class MachineParamsScreen extends AbstractContainerScreen<MachineParamsMe
         lines.add(Component.translatable("screen.stardustindustry.machine_params.vessel.capacity",
                 capacityBuckets));
 
-        lines.add(Component.translatable("screen.stardustindustry.machine_params.vessel.fluid",
+        lines.add(Component.translatable(gasTank(tank)
+                        ? "screen.stardustindustry.machine_params.vessel.gas"
+                        : "screen.stardustindustry.machine_params.vessel.fluid",
                 tank.fluidKey().isEmpty()
                         ? Component.translatable("screen.stardustindustry.machine_params.fluid.empty")
                         : fluidName(tank)));
@@ -154,7 +156,7 @@ public class MachineParamsScreen extends AbstractContainerScreen<MachineParamsMe
                 Math.max(0, capacityBuckets - storedBuckets)));
 
         lines.add(Component.translatable("screen.stardustindustry.machine_params.vessel.ports",
-                portList(tank.ports())));
+                portList(tank.ports(), gasTank(tank))));
 
         lines.add(Component.translatable("screen.stardustindustry.machine_params.vessel.max_rate",
                 maxRate(tank)));
@@ -167,7 +169,7 @@ public class MachineParamsScreen extends AbstractContainerScreen<MachineParamsMe
      * {@code "LV 流体端口 ×1"}. An empty list becomes a single "none" entry so
      * the line is never blank.
      */
-    private Component portList(String encoded) {
+    private Component portList(String encoded, boolean gas) {
         if (encoded.isEmpty()) {
             return Component.translatable("screen.stardustindustry.machine_params.vessel.ports.none");
         }
@@ -182,11 +184,18 @@ public class MachineParamsScreen extends AbstractContainerScreen<MachineParamsMe
                 result.append("，");
             }
             first = false;
-            result.append(Component.translatable("screen.stardustindustry.machine_params.vessel.port_entry",
+            result.append(Component.translatable(gas
+                            ? "screen.stardustindustry.machine_params.vessel.port_entry_gas"
+                            : "screen.stardustindustry.machine_params.vessel.port_entry",
                     Component.translatable("tier.stardustindustry." + parts[0]).getString(),
                     parts[1]));
         }
         return result;
+    }
+
+    /** True when this vessel stores a gas, by the structure-name suffix it shipped. */
+    private static boolean gasTank(MachineParamsData.TankParams tank) {
+        return "gas".equals(tank.structureName());
     }
 
     /**

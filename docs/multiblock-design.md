@@ -1,9 +1,12 @@
-# 星砾工业 · 多方块框架设计文档（v2.1）
+# 星砾工业 · 多方块框架设计文档（v2.2）
 
 > 状态：**设计稿（大部分已锁定，待少量批复）**
 > v2 变更：由"全动态"修正为 **静态机器为主 + 动态机器为辅** 的双轨制。
 > v2.1 变更：吸收第二轮批复——**电压等级体系**（LV/MV/HV/EHV，合成表区分、不绑定材质）、**基座槽不得为空**、**端口仅在基座层**、**安装工具兼拆除 + 参数 GUI + 拆解返还**（未产出则输入全额返还）、**控制端口 = 3×3 九格输入/输出面板（带过滤）**、**加成无边际递减**、**成型只替换上方主体、底座保留**。
-> 关联代码：`com.stardustindustry.stardustindustry.multiblock` / `.machine`
+> v2.2 变更：**储罐分介质**（流体储罐 / 气体储罐，结构同源、仅介质不同）与**部件命名正式化**（`fluid_tank_shell` / `gas_tank_shell` / `industrial_glass` / `lv_gas_port` 等）；新增**通用气体抽象**（`Gas` / `GasStack` / `IGasHandler` / `GasRegistry` + `GasBufferModule`）；**气体渲染按浓度**（非液面）。详见 §15。
+> 关联代码：`com.stardustindustry.stardustindustry.multiblock` / `.machine` / `.gas`
+> **本文档是框架主文档**：双轨制、等级、加成、结构求值、投影、参数 GUI 等**通用机制**以本文为准；
+> 储罐（流体/气体共用）的专项设计见 [`tank-multiblock-design.md`](./tank-multiblock-design.md)。
 
 ---
 
@@ -294,7 +297,7 @@ List<PlacedPart> placedParts;   // { offset, originalState, role, fillerKind, po
 - **其余字段**用深色正文（`0x404040`），面板底色为浅灰（`0xFFC6C6C6`），
   保证深色字可读。
 - **字段随机器而异**，由服务端快照决定，界面不猜测。储罐字段见
-  `tank-multiblock-design.md` §13。
+  `tank-multiblock-design.md` §9。
 - 快照对"有专属讲法的机器"附带一个额外数据块（当前是
   `MachineParamsData.TankParams`），普通机器为 `null`，界面自动回落到
   通用字段布局。这样一套快照类型即可承载两种界面，无需为每种机器新增类型。
@@ -307,6 +310,9 @@ List<PlacedPart> placedParts;   // { offset, originalState, role, fillerKind, po
 
 > **本节的通用规则适用于"按等级"的动态机器（如将来的锅炉/塔器）。**
 > **储罐是特例：它无等级、框架无等级、内部必须纯空气、且用洪水填充判定而非射线扫描。**
+> 储罐还分**两种介质**：**流体储罐**（`fluid_tank_shell`）与**气体储罐**（`gas_tank_shell`）。
+> 两者**结构、规则完全一致**，唯一区别是**介质**（一个存液体、一个存气体）与**外壳方块/端口**；
+> **储罐框架 `tank_frame` 与工业玻璃 `industrial_glass` 两者共用**。
 > 储罐的完整、权威设计见独立文档
 > [`tank-multiblock-design.md`](./tank-multiblock-design.md)。本节不再描述储罐细则。
 
@@ -455,6 +461,9 @@ public interface StructureProvider {
 
     /** 结构变化时是否自动重扫（静态机器在成型后不重扫）。 */
     default boolean revalidateWhileFormed() { return false; }
+
+    /** 求值需要哪些区块已加载；null = 无限制（见 §7.5）。 */
+    default Collection<ChunkPos> footprint(BlockPos controller, Direction facing) { return null; }
 }
 ```
 
@@ -462,6 +471,22 @@ public interface StructureProvider {
 
 - `StaticStructureProvider`：逐格 DSL + 基座槽校验。
 - `DynamicStructureProvider`：调用 `BoundingBoxScanner`。
+
+### 7.5 跨区块与"未加载就冻结"
+
+多方块可以横跨多个区块，而 `Level.getBlockState` 对**未加载区块返回空气**——若此时求值，
+机器会被误判解体、解绑端口、甚至按残缺体积重算容量。规则：
+
+> **结构覆盖的区块没有全部加载时，跳过本次求值，冻结现状（不判失败、不解绑、不改容量、不广播），
+> 区块全部回来后自动恢复。**
+
+- `StructureProvider.footprint(...)` 报告结构可能触及的区块；`null` 表示无限制。
+- `StructureChunkGuard.allLoaded(level, footprint)` 逐块 `level.hasChunk(cx, cz)` 检查。
+- `MachineBlockEntity.revalidate(...)` 与 `install()` 在求值/安装前检查，未全加载即冻结/拒绝。
+- 静态 provider 用模型精确几何；动态/储罐 provider 用 `reachChunks(controller, MAX_SIZE)` 预留最大范围。
+- 自检：`MultiblockSelfCheck.checkChunkFootprint()`（含负数坐标向零取整的回归用例）。
+
+详见 `docs/tank-multiblock-design.md` §18。**这一条对静态与动态多方块一律生效。**
 
 ### 7.2 求值结果
 
@@ -513,6 +538,16 @@ public record ScanFailure(BlockPos expectedPos, String expectation) {}
 | 功能端口 | `lv_item_port`, `mv_fluid_port`, … | 否 | 基座槽 / 动态外壳面 |
 | 控制端口 | `lv_control_port` … `ehv_control_port` | 否 | 基座槽 / 动态外壳面，9 格信号面板 |
 | 控制器 | `crusher`, ... | — | 每台机器一个 |
+| **储罐框架** | `tank_frame` | 否 | 储罐 12 棱；**流体/气体共用** |
+| **工业玻璃** | `industrial_glass` | 否 | 储罐透明面；**流体/气体共用** |
+| **流体储罐外壳** | `fluid_tank_shell` | 否（体积定容量） | 流体储罐 6 面 + 控制器 |
+| **气体储罐外壳** | `gas_tank_shell` | 否（体积定容量） | 气体储罐 6 面 + 控制器 |
+| **流体端口（储罐用）** | `lv_fluid_port` … | 否 | 流体储罐外壳面 |
+| **气体端口（储罐用）** | `lv_gas_port` … | 否 | 气体储罐外壳面 |
+
+> **命名规则**：同一部件若因介质不同而分化，用 `<medium>_tank_<part>` 命名
+> （`fluid_tank_shell` / `gas_tank_shell`）；共用部件不带介质前缀
+> （`tank_frame` / `industrial_glass`）。详见 [`terminology.md`](./terminology.md)。
 
 > **等级命名而非材质命名**：方块直接叫 LV/MV/HV/EHV，用什么材料是**合成表 + 美术**
 > 的事，不承担等级语义（你确认的方案）。这样外观自由、进度门槛干净。
@@ -548,6 +583,11 @@ com.stardustindustry.stardustindustry
 ├── StardustIndustry.java
 ├── Config.java
 ├── capability/           ResourceType, ResourceStack
+├── gas/                                     ← 新增（通用气体抽象，本模组自有）
+│   ├── Gas.java                             （气体类型：id + 色调）
+│   ├── GasStack.java                        （气体 + 量，单位 mB；NBT 往返）
+│   ├── IGasHandler.java                     （气体处理器接口，仿 IFluidHandler）
+│   └── GasRegistry.java                     （气体注册表；内置常见工业气体 + 兼容层注册）
 ├── energy/               EnergyTier
 ├── multiblock/                              ← 静态（保留 + 扩展）
 │   ├── PartRole.java                        （扩展：+BASE_SLOT）
@@ -592,8 +632,16 @@ com.stardustindustry.stardustindustry
 │   ├── MachinePortBlockEntity.java
 │   ├── PlacedPart.java                      ← 新增（原始方块记录条目）
 │   ├── tool/InstallationToolItem.java       ← 新增（安装工具：右击安装 / Shift+右键参数GUI）
-│   ├── module/  （Energy / ItemInventory / RecipeRunner …）
-│   ├── port/    （Item / Fluid / Energy / Control）
+│   ├── module/  （Energy / ItemInventory / RecipeRunner / FluidBuffer / **GasBuffer**）
+│   ├── port/    （Item / Fluid / **Gas** / Energy / Control）
+│   ├── tank/    ← 储罐（流体/气体同源）
+│   │   ├── TankMedium.java                  （FLUID / GAS：介质枚举，决定外壳块与文案）
+│   │   ├── AbstractTankBlockEntity.java     （共用：结构/锚点/容量/同步/参数/广播）
+│   │   ├── TankBlockEntity.java             （流体储罐控制器：FluidBufferModule）
+│   │   ├── GasTankBlockEntity.java          （气体储罐控制器：GasBufferModule）
+│   │   ├── TankShellBlock.java              （外壳块，按介质选自 BE 类型）
+│   │   ├── TankFrameBlock.java / TankGlassBlock.java （共用框架 / 工业玻璃）
+│   │   └── TankHudAccess.java               （任意格 → 储罐控制器）
 │   └── crusher/ （重写为静态示例）
 ├── recipe/               ModRecipes, ProcessingRecipe, ProcessingRecipeInput
 ├── compat/jei/           StardustJeiPlugin, CrushingCategory
@@ -670,8 +718,11 @@ com.stardustindustry.stardustindustry
 | **D7** | 控制器 BER（投影幽灵渲染）+ 失败格客户端同步 | 未成型可看见投影 | ✅ 已完成（BER 由控制器绘制；runClient 无崩溃、`runServer` `Done`）|
 | **D7.5** | 成型整机重绘（Ledger 重绘）+ 动画（`MachineAnimators`）+ 连接材质 | 视觉闭环 | ✅ 已完成（粉碎机迁 provider；runServer `Done`、runClient 无崩溃）|
 | **D7.6** | 实机测试反馈修复：LV 端口贴图 / 储罐锚点与自动成型 / 投影改空位+控制器旁文字 / 全中文输出 / 任意部件开参数 GUI / 流体模块 / 隐形方块碰撞箱 | 可实测体验 | ✅ 已完成（详见 §12.1）|
-| **D7.7** | **储罐重做**：无等级框架/外壳/钢化玻璃 + 洪水填充判定 + 体积定容量 + 匠魂式液面 + **主流高亮模组兼容（HUD）** | 储罐可实机使用 | ✅ 已完成（见 [`tank-multiblock-design.md`](./tank-multiblock-design.md)；高亮兼容见 §10.4） |
+| **D7.7** | **储罐重做**：无等级框架/外壳/玻璃（旧名，D7.9 已更名 `fluid_tank_shell`/`industrial_glass`）+ 洪水填充判定 + 体积定容量 + 匠魂式液面 + **主流高亮模组兼容（HUD）** | 储罐可实机使用 | ✅ 已完成（见 [`tank-multiblock-design.md`](./tank-multiblock-design.md)；高亮兼容见 §10.4） |
 | **D7.8** | **占位美术资源手册**：逐张标明每张贴图对应方块，供美术替换 | 美术可接手 | ✅ 已完成（见 [`textures-placeholder-manual.md`](./textures-placeholder-manual.md)） |
+| **D7.9** | **储罐部件命名正式化**：`tank_shell`→`fluid_tank_shell`、`tank_glass`→`industrial_glass`；注册 ID / 常量 / 语言键 / 模型 / 配方 / 贴图 / 文档同步 | 命名一次到位 | ✅ 已完成（不向后兼容，开发阶段） |
+| **D7.10** | **储罐分介质 + 通用气体抽象**：`Gas`/`GasStack`/`IGasHandler`/`GasRegistry` + `GasBufferModule`；`TankMedium` 抽公共基类；`gas_tank_shell` / `lv_gas_port`；气体能力注册；气体**浓度**渲染 | 气体储罐可实机使用 | 🔄 进行中（见 §15） |
+| **D7.11** | **Mekanism 软依赖适配器**：把 Mekanism 全部化学品（含核材料/放射性气体）映射为本模组 `Gas`；气体端口对接 Mek 加压管道；外壳不对外 | 与 Mekanism 互通 | ✅ 已完成（见 [`tank-multiblock-design.md`](./tank-multiblock-design.md) §17；实测注册 65 种化学品） |
 | **D8** | `signal/` 控制端口逻辑 + `ControlPortScreen` + `compat/cc` | 逻辑接口可用 | ⬜ |
 | **D9** | 重写破碎机为静态示例；数值调优 | 可玩 | ⬜ |
 
@@ -971,11 +1022,67 @@ com.stardustindustry.stardustindustry
 
 ---
 
-## 14. 下一步（D1）
+## 14. 当前进度与下一步
 
-准备好后进入 **D1**：
-`StructureProvider` 接口 + `StructureEvaluation` + `ScanFailure` + `TierMaterials`（等级映射）。
+D0.5 ~ D7.10 见 §12 的阶段表（D7.10 气体储罐进行中，见 §15）。
+**下一步**：完成 D7.10 的气体储罐实机闭环 → 进入 **D7.11 Mekanism 软依赖适配器**
+（把全部化学品映射为 `Gas`）→ 再回到 **D8 控制端口逻辑层**。
 每阶段 `compileJava` + `runServer` 验证 0 错误。
+
+---
+
+## 15. 气体子系统与"同源储罐"（v2.2 新增）
+
+### 15.1 为什么自建气体抽象
+
+原版没有"气体"这种资源，唯一通用来源是 Mekanism 的化学品（chemical）。若把 Mekanism
+当作硬前置，则本模组的所有机器都被一个外部模组绑架；而若完全不做，储罐就永远只有液体。
+
+因此本模组**自建一层最小的气体抽象**，把 Mekanism 当作**软依赖**适配进来：
+
+| 层 | 内容 | 说明 |
+|---|---|---|
+| 核心抽象 | `Gas` / `GasStack` / `IGasHandler` / `GasRegistry` | 本模组自有，**不依赖任何外部模组**；单位 **mB**（与流体一致） |
+| 缓冲模块 | `GasBufferModule` | 机器/储罐里的气体缓存，暴露 `IGasHandler` 能力 |
+| 能力注册 | `ModCapabilityTypes.GAS_HANDLER`（`BlockCapability<IGasHandler, Void>`） | 气体端口与气体储罐外壳对外暴露 |
+| 兼容层（D7.11 ✅） | `compat/mekanism` | 把 Mekanism 全部化学品映射为 `Gas`；Mekanism 不在时本模组照常运行 |
+
+> **设计原则**：一个整合包**没有 Mekanism 也能跑**——`GasRegistry` 内置一组常见工业气体
+> （氢/氧/氮/二氧化碳/蒸汽/天然气）作为占位；装了 Mekanism 则其**全部**化学品（含**核材料、
+> 放射性气体**）经适配器进入 `GasRegistry`，可直接存进气罐、走气管。
+
+### 15.2 气体与流体：同结构、异介质、异渲染
+
+储罐的**流体版与气体版是同一个多方块**，共用 `AbstractTankBlockEntity`（结构、锚点、容量、
+客户端同步、参数屏、成型广播全部共用）。差异集中在三处：
+
+| 方面 | 流体储罐 | 气体储罐 |
+|---|---|---|
+| 外壳 | `fluid_tank_shell` | `gas_tank_shell` |
+| 端口 | `lv_fluid_port` 等 | `lv_gas_port` 等（先 LV，MV/HV/EHV later） |
+| 缓冲模块 | `FluidBufferModule`（`FluidStack`） | `GasBufferModule`（`GasStack`） |
+| 能力 | `IFluidHandler` | `IGasHandler`（本模组能力） |
+| **罐内渲染** | **液面高度**：从底部逐格升高 | **浓度**：始终充满内腔，颜色随量变浓，透明度最高 **70%** |
+
+**介质如何决定**：结构求值器 `TankStructureProvider` 从**锚点的外壳块**读出介质
+（`TankMedium`），随后只接受**同介质**的外壳与端口；共用件 `tank_frame` / `industrial_glass`
+两种介质都认。把气体外壳混进流体罐（或反之）视为搭建错误。
+
+**渲染记忆点**：**流体看"液面多高"，气体看"有多浓"。** 见
+[`terminology.md`](./terminology.md) 的"气体渲染约定"。
+
+### 15.3 端口与速率
+
+- 气体端口与流体端口**同一套 `MachinePortBlock` 与 `MachinePortBlockEntity`**，只是 `PartRole`
+  为 `PORT_GAS`（新增），能力注册指向气体缓冲。
+- 速率：流体端口为 LV/MV/HV/EHV = **5 / 20 / 80 / 320 B/t**；气体端口沿用同一速率表
+  （同一 `EnergyTier.fluidTransfer()`）。
+- 手动交互（手持容器右键端口）本阶段先只做**流体**；气体容器的右键交互在兼容层就绪后补（D7.11）。
+
+### 15.4 储罐参数屏（两种介质共用布局）
+
+参数屏对流体/气体**同一版式**，仅"介质名"与内容名不同；储罐字段清单见
+[`tank-multiblock-design.md`](./tank-multiblock-design.md) §9。
 
 ---
 

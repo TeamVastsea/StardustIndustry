@@ -87,6 +87,12 @@ public class StardustIndustry {
         // Highlight-mod integrations. Jade and WTHIT are self-discovering; TOP
         // needs the explicit, presence-guarded hook this installs.
         event.enqueueWork(com.stardustindustry.stardustindustry.compat.hud.HighlightCompat::register);
+        // Optional Mekanism bridge: once registries are frozen, sweep every
+        // Mekanism chemical into our gas registry so a tank can hold any of them.
+        // Guarded here so a pack without Mekanism never loads a Mekanism type.
+        if (net.neoforged.fml.ModList.get().isLoaded("mekanism")) {
+            event.enqueueWork(com.stardustindustry.stardustindustry.compat.mekanism.MekanismCompat::registerGases);
+        }
         LOGGER.info("Stardust Industry common setup complete");
     }
 
@@ -98,14 +104,16 @@ public class StardustIndustry {
             event.accept(ModBlocks.LV_BASE_ITEM);
             event.accept(ModBlocks.LV_ITEM_PORT_ITEM);
             event.accept(ModBlocks.LV_FLUID_PORT_ITEM);
+            event.accept(ModBlocks.LV_GAS_PORT_ITEM);
             event.accept(ModBlocks.LV_ENERGY_PORT_ITEM);
             event.accept(ModBlocks.LV_GRINDING_CORE_ITEM);
             event.accept(ModBlocks.LV_HEAT_EXCHANGER_CORE_ITEM);
             event.accept(ModBlocks.LV_PARALLEL_CORE_ITEM);
             event.accept(ModBlocks.LV_BUFFER_CORE_ITEM);
             event.accept(ModBlocks.TANK_FRAME_ITEM);
-            event.accept(ModBlocks.TANK_SHELL_ITEM);
-            event.accept(ModBlocks.TANK_GLASS_ITEM);
+            event.accept(ModBlocks.FLUID_TANK_SHELL_ITEM);
+            event.accept(ModBlocks.GAS_TANK_SHELL_ITEM);
+            event.accept(ModBlocks.INDUSTRIAL_GLASS_ITEM);
             event.accept(ModItems.INSTALLATION_TOOL);
             event.accept(ModItems.CRUSHED_IRON);
         }

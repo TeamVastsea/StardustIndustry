@@ -38,4 +38,9 @@ fetch "https://cdn.modrinth.com/data/ftdbN0KK/versions/RNyYl9M3/badpackets-neo-0
 fetch "https://cdn.modrinth.com/data/Eyw0UxEx/versions/4bbMy0Mh/theoneprobe-1.21_neo-12.0.8.jar" \
       "theoneprobe-1.21-neo-12.0.8.jar"
 
-echo "Highlight-tooltip libs ready in libs/"
+# Mekanism: optional chemical bridge (soft dependency). Needed at compile time
+# for compat/mekanism; at runtime a pack may or may not ship it.
+fetch "https://cdn.modrinth.com/data/Ce6I4WUE/versions/5KzzycBT/Mekanism-1.21.1-10.7.19.85.jar" \
+      "Mekanism-1.21.1-10.7.19.85.jar"
+
+echo "Highlight-tooltip + Mekanism libs ready in libs/"

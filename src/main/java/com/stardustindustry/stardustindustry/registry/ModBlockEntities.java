@@ -43,6 +43,11 @@ public final class ModBlockEntities {
                     () -> BlockEntityType.Builder.of(FluidPortBlockEntity::new,
                             ModBlocks.LV_FLUID_PORT.get()).build(null));
 
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<com.stardustindustry.stardustindustry.machine.port.GasPortBlockEntity>> GAS_PORT =
+            BLOCK_ENTITIES.register("gas_port",
+                    () -> BlockEntityType.Builder.of(com.stardustindustry.stardustindustry.machine.port.GasPortBlockEntity::new,
+                            ModBlocks.LV_GAS_PORT.get()).build(null));
+
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<EnergyPortBlockEntity>> ENERGY_PORT =
             BLOCK_ENTITIES.register("energy_port",
                     () -> BlockEntityType.Builder.of(EnergyPortBlockEntity::new,
@@ -53,10 +58,15 @@ public final class ModBlockEntities {
                     () -> BlockEntityType.Builder.of(com.stardustindustry.stardustindustry.machine.InvisibleStructureBlockEntity::new,
                             ModBlocks.INVISIBLE_STRUCTURE.get()).build(null));
 
-    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<com.stardustindustry.stardustindustry.machine.tank.TankBlockEntity>> TANK_SHELL =
-            BLOCK_ENTITIES.register("tank_shell",
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<com.stardustindustry.stardustindustry.machine.tank.TankBlockEntity>> FLUID_TANK_SHELL =
+            BLOCK_ENTITIES.register("fluid_tank_shell",
                     () -> BlockEntityType.Builder.of(com.stardustindustry.stardustindustry.machine.tank.TankBlockEntity::new,
-                            ModBlocks.TANK_SHELL.get()).build(null));
+                            ModBlocks.FLUID_TANK_SHELL.get()).build(null));
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<com.stardustindustry.stardustindustry.machine.tank.GasTankBlockEntity>> GAS_TANK_SHELL =
+            BLOCK_ENTITIES.register("gas_tank_shell",
+                    () -> BlockEntityType.Builder.of(com.stardustindustry.stardustindustry.machine.tank.GasTankBlockEntity::new,
+                            ModBlocks.GAS_TANK_SHELL.get()).build(null));
 
     private ModBlockEntities() {}
 
@@ -78,6 +88,7 @@ public final class ModBlockEntities {
         // newBlockEntity.
         ModBlocks.LV_ITEM_PORT.get().withBlockEntityType(ITEM_PORT.get());
         ModBlocks.LV_FLUID_PORT.get().withBlockEntityType(FLUID_PORT.get());
+        ModBlocks.LV_GAS_PORT.get().withBlockEntityType(GAS_PORT.get());
         ModBlocks.LV_ENERGY_PORT.get().withBlockEntityType(ENERGY_PORT.get());
         ModBlocks.INVISIBLE_STRUCTURE.get().withBlockEntityType(INVISIBLE_STRUCTURE.get());
     }

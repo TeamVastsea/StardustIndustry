@@ -84,6 +84,11 @@ public final class ModBlocks {
             () -> new MachinePortBlock(portProperties(), PartRole.PORT_FLUID,
                     com.stardustindustry.stardustindustry.energy.EnergyTier.LV));
 
+    /** LV gas port. */
+    public static final DeferredBlock<MachinePortBlock> LV_GAS_PORT = ModRegistries.BLOCKS.register("lv_gas_port",
+            () -> new MachinePortBlock(portProperties(), PartRole.PORT_GAS,
+                    com.stardustindustry.stardustindustry.energy.EnergyTier.LV));
+
     /** LV energy port. */
     public static final DeferredBlock<MachinePortBlock> LV_ENERGY_PORT = ModRegistries.BLOCKS.register("lv_energy_port",
             () -> new MachinePortBlock(portProperties(), PartRole.PORT_ENERGY,
@@ -126,19 +131,31 @@ public final class ModBlocks {
             ModRegistries.BLOCKS.register("tank_frame",
                     () -> new com.stardustindustry.stardustindustry.machine.tank.TankFrameBlock(frameProperties()));
 
-    /** Tank shell: the six faces of a tank; one of them owns the block entity. */
-    public static final DeferredBlock<com.stardustindustry.stardustindustry.machine.tank.TankShellBlock> TANK_SHELL =
-            ModRegistries.BLOCKS.register("tank_shell",
+    /** Fluid tank shell: the six faces of a fluid tank; one of them owns the block entity. */
+    public static final DeferredBlock<com.stardustindustry.stardustindustry.machine.tank.TankShellBlock> FLUID_TANK_SHELL =
+            ModRegistries.BLOCKS.register("fluid_tank_shell",
                     () -> new com.stardustindustry.stardustindustry.machine.tank.TankShellBlock(
+                            com.stardustindustry.stardustindustry.machine.tank.TankMedium.FLUID,
                             BlockBehaviour.Properties.of()
                                     .mapColor(MapColor.METAL)
                                     .strength(3.5f, 6.0f)
                                     .sound(SoundType.METAL)
                                     .requiresCorrectToolForDrops()));
 
-    /** Tank glass: a transparent stand-in for a shell panel. */
-    public static final DeferredBlock<com.stardustindustry.stardustindustry.machine.tank.TankGlassBlock> TANK_GLASS =
-            ModRegistries.BLOCKS.register("tank_glass",
+    /** Gas tank shell: the six faces of a gas tank; one of them owns the block entity. */
+    public static final DeferredBlock<com.stardustindustry.stardustindustry.machine.tank.TankShellBlock> GAS_TANK_SHELL =
+            ModRegistries.BLOCKS.register("gas_tank_shell",
+                    () -> new com.stardustindustry.stardustindustry.machine.tank.TankShellBlock(
+                            com.stardustindustry.stardustindustry.machine.tank.TankMedium.GAS,
+                            BlockBehaviour.Properties.of()
+                                    .mapColor(MapColor.METAL)
+                                    .strength(3.5f, 6.0f)
+                                    .sound(SoundType.METAL)
+                                    .requiresCorrectToolForDrops()));
+
+    /** Industrial glass: a transparent stand-in for a shell panel, shared by both tank kinds. */
+    public static final DeferredBlock<com.stardustindustry.stardustindustry.machine.tank.TankGlassBlock> INDUSTRIAL_GLASS =
+            ModRegistries.BLOCKS.register("industrial_glass",
                     () -> new com.stardustindustry.stardustindustry.machine.tank.TankGlassBlock(
                             BlockBehaviour.Properties.of()
                                     .mapColor(MapColor.NONE)
@@ -169,6 +186,9 @@ public final class ModBlocks {
     /** Block item for the LV fluid port. */
     public static final DeferredItem<BlockItem> LV_FLUID_PORT_ITEM =
             ModRegistries.ITEMS.registerSimpleBlockItem("lv_fluid_port", LV_FLUID_PORT);
+    /** Block item for the LV gas port. */
+    public static final DeferredItem<BlockItem> LV_GAS_PORT_ITEM =
+            ModRegistries.ITEMS.registerSimpleBlockItem("lv_gas_port", LV_GAS_PORT);
     /** Block item for the LV energy port. */
     public static final DeferredItem<BlockItem> LV_ENERGY_PORT_ITEM =
             ModRegistries.ITEMS.registerSimpleBlockItem("lv_energy_port", LV_ENERGY_PORT);
@@ -187,12 +207,15 @@ public final class ModBlocks {
     /** Block item for the tank frame. */
     public static final DeferredItem<BlockItem> TANK_FRAME_ITEM =
             ModRegistries.ITEMS.registerSimpleBlockItem("tank_frame", TANK_FRAME);
-    /** Block item for the tank shell. */
-    public static final DeferredItem<BlockItem> TANK_SHELL_ITEM =
-            ModRegistries.ITEMS.registerSimpleBlockItem("tank_shell", TANK_SHELL);
-    /** Block item for the tank glass. */
-    public static final DeferredItem<BlockItem> TANK_GLASS_ITEM =
-            ModRegistries.ITEMS.registerSimpleBlockItem("tank_glass", TANK_GLASS);
+    /** Block item for the fluid tank shell. */
+    public static final DeferredItem<BlockItem> FLUID_TANK_SHELL_ITEM =
+            ModRegistries.ITEMS.registerSimpleBlockItem("fluid_tank_shell", FLUID_TANK_SHELL);
+    /** Block item for the gas tank shell. */
+    public static final DeferredItem<BlockItem> GAS_TANK_SHELL_ITEM =
+            ModRegistries.ITEMS.registerSimpleBlockItem("gas_tank_shell", GAS_TANK_SHELL);
+    /** Block item for the industrial glass. */
+    public static final DeferredItem<BlockItem> INDUSTRIAL_GLASS_ITEM =
+            ModRegistries.ITEMS.registerSimpleBlockItem("industrial_glass", INDUSTRIAL_GLASS);
 
     private ModBlocks() {}
 
@@ -248,6 +271,7 @@ public final class ModBlocks {
         // LV set: ports, base block, and the four filler kinds.
         MachinePartTypes.register(LV_ITEM_PORT.get(), MachinePartTypes.PartType.PORT);
         MachinePartTypes.register(LV_FLUID_PORT.get(), MachinePartTypes.PartType.PORT);
+        MachinePartTypes.register(LV_GAS_PORT.get(), MachinePartTypes.PartType.PORT);
         MachinePartTypes.register(LV_ENERGY_PORT.get(), MachinePartTypes.PartType.PORT);
         MachinePartTypes.register(LV_BASE.get(), MachinePartTypes.PartType.BASE);
         MachinePartTypes.registerFiller(LV_GRINDING_CORE.get(),
@@ -264,14 +288,16 @@ public final class ModBlocks {
         // block identity for the edge/face rules, but the part types let generic
         // code (projection, break handling) treat them sensibly too.
         MachinePartTypes.register(TANK_FRAME.get(), MachinePartTypes.PartType.FRAME);
-        MachinePartTypes.register(TANK_SHELL.get(), MachinePartTypes.PartType.SHELL);
-        MachinePartTypes.register(TANK_GLASS.get(), MachinePartTypes.PartType.SHELL);
+        MachinePartTypes.register(FLUID_TANK_SHELL.get(), MachinePartTypes.PartType.SHELL);
+        MachinePartTypes.register(GAS_TANK_SHELL.get(), MachinePartTypes.PartType.SHELL);
+        MachinePartTypes.register(INDUSTRIAL_GLASS.get(), MachinePartTypes.PartType.SHELL);
 
         // Level-bearing blocks: base blocks and every tiered port. The tank's own
         // parts are deliberately absent, since a tank has no tier.
         TierMaterials.register(LV_BASE.get(), com.stardustindustry.stardustindustry.energy.EnergyTier.LV);
         TierMaterials.register(LV_ITEM_PORT.get(), com.stardustindustry.stardustindustry.energy.EnergyTier.LV);
         TierMaterials.register(LV_FLUID_PORT.get(), com.stardustindustry.stardustindustry.energy.EnergyTier.LV);
+        TierMaterials.register(LV_GAS_PORT.get(), com.stardustindustry.stardustindustry.energy.EnergyTier.LV);
         TierMaterials.register(LV_ENERGY_PORT.get(), com.stardustindustry.stardustindustry.energy.EnergyTier.LV);
     }
 

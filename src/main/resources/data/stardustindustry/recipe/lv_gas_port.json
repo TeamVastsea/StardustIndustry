@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " G ",
+    "GBG",
+    " G "
+  ],
+  "key": {
+    "G": { "tag": "c:glass_blocks" },
+    "B": { "item": "stardustindustry:lv_base" }
+  },
+  "result": {
+    "id": "stardustindustry:lv_gas_port",
+    "count": 1
+  }
+}

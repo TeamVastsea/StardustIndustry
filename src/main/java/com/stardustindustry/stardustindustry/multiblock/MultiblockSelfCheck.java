@@ -38,6 +38,48 @@ public final class MultiblockSelfCheck {
         checkConnectedParts();
         checkMachineRoles();
         checkDynamicScan();
+        checkChunkFootprint();
+    }
+
+    /**
+     * Pins the chunk-guard geometry used to freeze a straddling multiblock.
+     *
+     * <p>The guard must never miss a chunk: a single missed chunk reads as air
+     * and would tear the machine down. These cases pin the box-to-chunk walk,
+     * including the negative-coordinate case where a naive division would round
+     * towards zero and drop a chunk.</p>
+     */
+    private static void checkChunkFootprint() {
+        // A box wholly inside one chunk names exactly that chunk.
+        var one = com.stardustindustry.stardustindustry.multiblock.provider.StructureChunkGuard
+                .chunksOf(new net.minecraft.core.BlockPos(1, 0, 1), new net.minecraft.core.BlockPos(15, 0, 15));
+        if (one.size() != 1) {
+            throw new IllegalStateException("self-check: single-chunk footprint was " + one);
+        }
+
+        // A box straddling a border on both axes names all four chunks.
+        var four = com.stardustindustry.stardustindustry.multiblock.provider.StructureChunkGuard
+                .chunksOf(new net.minecraft.core.BlockPos(15, 0, 15), new net.minecraft.core.BlockPos(16, 0, 16));
+        if (four.size() != 4) {
+            throw new IllegalStateException("self-check: straddling footprint was " + four);
+        }
+
+        // A reach of 9 around the origin spans blocks -9..+9, which crosses the
+        // origin chunk border into the negative chunks: the set must contain the
+        // (-1,-1) and (0,0) corners (a naive `pos/16` would drop the negative one).
+        var reach = com.stardustindustry.stardustindustry.multiblock.provider.StructureChunkGuard
+                .reachChunks(net.minecraft.core.BlockPos.ZERO, 9);
+        if (!reach.contains(new net.minecraft.world.level.ChunkPos(-1, -1))
+                || !reach.contains(new net.minecraft.world.level.ChunkPos(0, 0))
+                || reach.size() != 4) {
+            throw new IllegalStateException("self-check: reach footprint was " + reach);
+        }
+
+        // A null footprint is the "no restriction" contract.
+        if (!com.stardustindustry.stardustindustry.multiblock.provider.StructureChunkGuard
+                .allLoaded(null, null)) {
+            throw new IllegalStateException("self-check: null footprint must always pass");
+        }
     }
 
     /**
@@ -360,15 +402,32 @@ public final class MultiblockSelfCheck {
                 != MachinePartTypes.PartType.FRAME) {
             throw new IllegalStateException("self-check: the tank frame is not classified as FRAME");
         }
-        if (MachinePartTypes.typeOf(com.stardustindustry.stardustindustry.registry.ModBlocks.TANK_SHELL.get())
+        if (MachinePartTypes.typeOf(com.stardustindustry.stardustindustry.registry.ModBlocks.FLUID_TANK_SHELL.get())
                 != MachinePartTypes.PartType.SHELL) {
-            throw new IllegalStateException("self-check: the tank shell is not classified as SHELL");
+            throw new IllegalStateException("self-check: the fluid tank shell is not classified as SHELL");
+        }
+        if (MachinePartTypes.typeOf(com.stardustindustry.stardustindustry.registry.ModBlocks.GAS_TANK_SHELL.get())
+                != MachinePartTypes.PartType.SHELL) {
+            throw new IllegalStateException("self-check: the gas tank shell is not classified as SHELL");
+        }
+        // Both tank media must present an identical geometry: same part type for
+        // shell and glass, and a shell block that reports its own medium. A gas
+        // tank is the fluid tank's structural twin; the two differ only in what
+        // they store.
+        if (com.stardustindustry.stardustindustry.multiblock.provider.TankStructureProvider.mediumOf(
+                com.stardustindustry.stardustindustry.registry.ModBlocks.FLUID_TANK_SHELL.get().defaultBlockState())
+                != com.stardustindustry.stardustindustry.machine.tank.TankMedium.FLUID
+                || com.stardustindustry.stardustindustry.multiblock.provider.TankStructureProvider.mediumOf(
+                com.stardustindustry.stardustindustry.registry.ModBlocks.GAS_TANK_SHELL.get().defaultBlockState())
+                != com.stardustindustry.stardustindustry.machine.tank.TankMedium.GAS) {
+            throw new IllegalStateException("self-check: a tank shell does not report its medium");
         }
         // A tank has no tier: its parts must not be registered as level-bearing,
         // or a tank could be built with clashing tiers that mean nothing.
         if (TierMaterials.tierOf(com.stardustindustry.stardustindustry.registry.ModBlocks.TANK_FRAME.get()) != null
-                || TierMaterials.tierOf(com.stardustindustry.stardustindustry.registry.ModBlocks.TANK_SHELL.get()) != null
-                || TierMaterials.tierOf(com.stardustindustry.stardustindustry.registry.ModBlocks.TANK_GLASS.get()) != null) {
+                || TierMaterials.tierOf(com.stardustindustry.stardustindustry.registry.ModBlocks.FLUID_TANK_SHELL.get()) != null
+                || TierMaterials.tierOf(com.stardustindustry.stardustindustry.registry.ModBlocks.GAS_TANK_SHELL.get()) != null
+                || TierMaterials.tierOf(com.stardustindustry.stardustindustry.registry.ModBlocks.INDUSTRIAL_GLASS.get()) != null) {
             throw new IllegalStateException("self-check: a tank part must not carry a voltage tier");
         }
         if (MachinePartTypes.typeOf(com.stardustindustry.stardustindustry.registry.ModBlocks.STEEL_CASING.get())

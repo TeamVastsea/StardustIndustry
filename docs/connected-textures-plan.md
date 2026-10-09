@@ -1,5 +1,11 @@
 # 连接材质（Connected Textures）方案与美术资源需求
 
+> **命名更新（重要）**：本文写作较早，方块 ID 用的是旧名。现已在开发阶段**正式重命名**，
+> 阅读本文时请做如下替换：`tank_shell` → **`fluid_tank_shell` / `gas_tank_shell`**，
+> `tank_glass` → **`industrial_glass`**，`tank_frame` 不变。文中所有 `tank_shell_*` /
+> `tank_glass*` 贴图名相应理解为新部件名下的贴图。详见
+> [`terminology.md`](./terminology.md) 与 [`tank-multiblock-design.md`](./tank-multiblock-design.md)。
+>
 > **当前状态（重要）**：连接材质**已从主模组中剥离**，暂缓实现。主模组内所有方块
 > （含储罐框架/外壳/玻璃）**一律使用普通 cube 模型与默认贴图**，不再使用 connected
 > texture / 连接覆盖模型。

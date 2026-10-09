@@ -2,6 +2,6 @@
   "parent": "minecraft:block/cube_all",
   "render_type": "minecraft:translucent",
   "textures": {
-    "all": "stardustindustry:block/tank_glass"
+    "all": "stardustindustry:block/industrial_glass"
   }
 }

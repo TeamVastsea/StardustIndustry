@@ -17,6 +17,10 @@ import net.minecraft.world.level.block.state.BlockState;
  * every highlight-mod plugin — needs one shared way to go from a clicked cell to
  * the anchor, so the logic lives here rather than being repeated per integrator.</p>
  *
+ * <p>Both media share this lookup: a fluid tank and a gas tank differ only in
+ * what their anchor stores, so the same walk serves either and the caller reads
+ * the medium off the result.</p>
+ *
  * <p>The lookup is cheap and layered: a cell that is itself a tank block entity
  * answers directly; a port answers through its binding; a frame or glass cell
  * answers through {@link TankMembershipRegistry}. A registry miss (a fresh chunk,
@@ -32,11 +36,11 @@ public final class TankHudAccess {
      * The tank containing {@code pos}, or {@code null} when {@code pos} is not
      * part of a formed tank.
      */
-    public static TankBlockEntity findTank(Level level, BlockPos pos) {
+    public static AbstractTankBlockEntity findTank(Level level, BlockPos pos) {
         if (level == null) {
             return null;
         }
-        if (level.getBlockEntity(pos) instanceof TankBlockEntity tank) {
+        if (level.getBlockEntity(pos) instanceof AbstractTankBlockEntity tank) {
             return tank;
         }
 
@@ -51,7 +55,7 @@ public final class TankHudAccess {
         if (anchor == null) {
             return null;
         }
-        return level.getBlockEntity(anchor) instanceof TankBlockEntity tank ? tank : null;
+        return level.getBlockEntity(anchor) instanceof AbstractTankBlockEntity tank ? tank : null;
     }
 
     /** True when the block at {@code pos} is any part of a tank. */
@@ -76,7 +80,7 @@ public final class TankHudAccess {
         int budget = 16 * 16 * 16;
         while (!queue.isEmpty() && budget-- > 0) {
             BlockPos current = queue.poll();
-            if (level.getBlockEntity(current) instanceof TankBlockEntity) {
+            if (level.getBlockEntity(current) instanceof AbstractTankBlockEntity) {
                 return current;
             }
             for (net.minecraft.core.Direction direction : net.minecraft.core.Direction.values()) {
@@ -92,7 +96,8 @@ public final class TankHudAccess {
     /** True when {@code state} is a tank block of any kind. */
     public static boolean isTankBlock(BlockState state) {
         return state.is(ModBlocks.TANK_FRAME.get())
-                || state.is(ModBlocks.TANK_SHELL.get())
-                || state.is(ModBlocks.TANK_GLASS.get());
+                || state.is(ModBlocks.FLUID_TANK_SHELL.get())
+                || state.is(ModBlocks.GAS_TANK_SHELL.get())
+                || state.is(ModBlocks.INDUSTRIAL_GLASS.get());
     }
 }

@@ -5,7 +5,7 @@ import java.util.function.Function;
 import com.stardustindustry.stardustindustry.StardustIndustry;
 import com.stardustindustry.stardustindustry.compat.hud.TankHudData;
 import com.stardustindustry.stardustindustry.compat.hud.TankHudLines;
-import com.stardustindustry.stardustindustry.machine.tank.TankBlockEntity;
+import com.stardustindustry.stardustindustry.machine.tank.AbstractTankBlockEntity;
 import com.stardustindustry.stardustindustry.machine.tank.TankHudAccess;
 import com.stardustindustry.stardustindustry.registry.ModBlocks;
 
@@ -70,7 +70,7 @@ public final class TankTopPlugin {
         @Override
         public void addProbeInfo(ProbeMode mode, IProbeInfo info, Player player,
                                  Level level, BlockState state, IProbeHitData data) {
-            TankBlockEntity tank = resolve(level, state, data);
+            AbstractTankBlockEntity tank = resolve(level, state, data);
             if (tank == null) {
                 return;
             }
@@ -84,15 +84,17 @@ public final class TankTopPlugin {
          * lookup for a frame, glass or port cell whose own block entity is not
          * the tank itself.
          */
-        private static TankBlockEntity resolve(Level level, BlockState state, IProbeHitData data) {
-            if (level.getBlockEntity(data.getPos()) instanceof TankBlockEntity tank) {
+        private static AbstractTankBlockEntity resolve(Level level, BlockState state, IProbeHitData data) {
+            if (level.getBlockEntity(data.getPos()) instanceof AbstractTankBlockEntity tank) {
                 return tank;
             }
             Block block = state.getBlock();
             if (block != ModBlocks.TANK_FRAME.get()
-                    && block != ModBlocks.TANK_SHELL.get()
-                    && block != ModBlocks.TANK_GLASS.get()
-                    && block != ModBlocks.LV_FLUID_PORT.get()) {
+                    && block != ModBlocks.FLUID_TANK_SHELL.get()
+                    && block != ModBlocks.GAS_TANK_SHELL.get()
+                    && block != ModBlocks.INDUSTRIAL_GLASS.get()
+                    && block != ModBlocks.LV_FLUID_PORT.get()
+                    && block != ModBlocks.LV_GAS_PORT.get()) {
                 return null;
             }
             return TankHudAccess.findTank(level, data.getPos());

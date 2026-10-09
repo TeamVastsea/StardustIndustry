@@ -46,16 +46,44 @@ public final class ModCapabilities {
                 (level, pos, state, blockEntity, side) -> fluidHandler(blockEntity, fluidRate(state)),
                 ModBlocks.LV_FLUID_PORT.get());
 
-        // The tank's shell is the machine itself, not a port: it exposes its fluid
-        // buffer directly, so a pipe can also connect straight to the vessel wall.
-        event.registerBlock(Capabilities.FluidHandler.BLOCK,
-                (level, pos, state, blockEntity, side) -> tankHandler(blockEntity),
-                ModBlocks.TANK_SHELL.get());
+        // Gas ports forward to the machine's gas buffer, exactly like fluid ports.
+        event.registerBlock(ModCapabilityTypes.GAS_HANDLER,
+                (level, pos, state, blockEntity, side) -> gasHandler(blockEntity, gasRate(state)),
+                ModBlocks.LV_GAS_PORT.get());
 
-        // LV ports expose the same capabilities, on the same controller.
+        // LV item ports expose the machine's inventory.
         event.registerBlock(Capabilities.ItemHandler.BLOCK,
                 (level, pos, state, blockEntity, side) -> itemHandler(blockEntity),
                 ModBlocks.LV_ITEM_PORT.get());
+
+        // NOTE: tank shells deliberately expose NO capability of their own. A tank
+        // is filled and emptied through its ports only, so a pipe cannot clip onto
+        // the vessel wall and bypass the port's rate. This holds for both media:
+        // the fluid shell used to expose one and no longer does, so a fluid and a
+        // gas tank behave identically at the wall.
+
+        // Optional Mekanism bridge. The presence test is done here, before the
+        // bridge class is named, so a pack without Mekanism never links against
+        // any Mekanism type at all.
+        if (net.neoforged.fml.ModList.get().isLoaded("mekanism")) {
+            com.stardustindustry.stardustindustry.compat.mekanism.MekanismCompat
+                    .registerCapabilities(event);
+        }
+    }
+
+    /**
+     * Resolves the gas capability a block entity would expose through a gas port.
+     *
+     * <p>Public so the optional Mekanism bridge can wrap the very same handler in
+     * its own chemical capability: the tube then talks to the machine through this
+     * method, so a port presents one gas handler regardless of who is asking.</p>
+     *
+     * @return the bound controller's gas capability, or {@code null} when the port
+     *         is idle or the controller has no gas buffer
+     */
+    public static com.stardustindustry.stardustindustry.gas.IGasHandler portGasCapability(
+            Object blockEntity, net.minecraft.world.level.block.state.BlockState state) {
+        return gasHandler(blockEntity, gasRate(state));
     }
 
     /**
@@ -72,12 +100,28 @@ public final class ModCapabilities {
         return Integer.MAX_VALUE;
     }
 
-    /** The tank shell's own fluid capability, capped at the module's default. */
-    private static IFluidHandler tankHandler(Object blockEntity) {
-        if (blockEntity instanceof com.stardustindustry.stardustindustry.machine.tank.TankBlockEntity tank) {
-            return tank.fluid().capability();
+    /**
+     * The per-operation gas cap a port of this block state imposes, in mB.
+     *
+     * <p>Mirrors {@link #fluidRate}: a tiered port caps at its tier's throughput,
+     * an untiered one leaves the module's own limit in charge.</p>
+     */
+    private static int gasRate(net.minecraft.world.level.block.state.BlockState state) {
+        if (state.getBlock() instanceof MachinePortBlock port && port.tier() != null) {
+            return port.tier().fluidTransfer();
         }
-        return null;
+        return Integer.MAX_VALUE;
+    }
+
+    /** The controller's gas module, capped at the port's rate, or {@code null}. */
+    private static com.stardustindustry.stardustindustry.gas.IGasHandler gasHandler(Object blockEntity, int rateLimit) {
+        MachineBlockEntity controller = controllerOf(blockEntity);
+        if (controller == null) {
+            return null;
+        }
+        com.stardustindustry.stardustindustry.machine.module.GasBufferModule gas =
+                controller.modules().get(com.stardustindustry.stardustindustry.machine.module.GasBufferModule.class);
+        return gas != null ? gas.capability(rateLimit) : null;
     }
 
     private static IItemHandler itemHandler(Object blockEntity) {

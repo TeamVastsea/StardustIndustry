@@ -55,6 +55,37 @@ public final class StaticStructureProvider implements StructureProvider {
         return model;
     }
 
+    /**
+     * The chunks the authored model can occupy, derived from its fixed positions
+     * under the controller's current facing. A static machine never reads outside
+     * these, so this is exactly the box that must be loaded to evaluate it.
+     */
+    @Override
+    public java.util.Collection<net.minecraft.world.level.ChunkPos> footprint(BlockPos controller, Direction facing) {
+        Rotation rotation = StructureRotation.forFacing(facing);
+        BlockPos min = controller;
+        BlockPos max = controller;
+        for (StructureSlot slot : model.allFixed()) {
+            BlockPos world = worldPos(controller, slot, rotation);
+            min = new BlockPos(Math.min(min.getX(), world.getX()),
+                    Math.min(min.getY(), world.getY()),
+                    Math.min(min.getZ(), world.getZ()));
+            max = new BlockPos(Math.max(max.getX(), world.getX()),
+                    Math.max(max.getY(), world.getY()),
+                    Math.max(max.getZ(), world.getZ()));
+        }
+        for (StructureSlot slot : model.baseSlots()) {
+            BlockPos world = worldPos(controller, slot, rotation);
+            min = new BlockPos(Math.min(min.getX(), world.getX()),
+                    Math.min(min.getY(), world.getY()),
+                    Math.min(min.getZ(), world.getZ()));
+            max = new BlockPos(Math.max(max.getX(), world.getX()),
+                    Math.max(max.getY(), world.getY()),
+                    Math.max(max.getZ(), world.getZ()));
+        }
+        return StructureChunkGuard.chunksOf(min, max);
+    }
+
     @Override
     public StructureEvaluation evaluate(Level level, BlockPos controller, Direction facing) {
         Rotation rotation = StructureRotation.forFacing(facing);

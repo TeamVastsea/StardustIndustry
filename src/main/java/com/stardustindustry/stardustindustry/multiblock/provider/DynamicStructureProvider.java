@@ -52,6 +52,17 @@ public final class DynamicStructureProvider implements StructureProvider {
         return true;
     }
 
+    /**
+     * The dynamic box is discovered by walk-out, so its real size is unknown
+     * before the scan. Reserve everything the scanner may reach — the controller's
+     * chunk plus half-extent {@link BoundingBoxScanner#MAX_SIZE} on both horizontal
+     * axes — so no unloaded chunk can hide inside the box.
+     */
+    @Override
+    public java.util.Collection<net.minecraft.world.level.ChunkPos> footprint(BlockPos controller, Direction facing) {
+        return StructureChunkGuard.reachChunks(controller, BoundingBoxScanner.MAX_SIZE);
+    }
+
     @Override
     public StructureEvaluation evaluate(Level level, BlockPos controller, Direction facing) {
         Map<BlockPos, BlockRole> roles = new HashMap<>();

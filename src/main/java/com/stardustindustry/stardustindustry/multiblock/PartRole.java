@@ -19,8 +19,11 @@ public enum PartRole {
     /** A position that must be an item port; exposes an item handler. */
     PORT_ITEM,
 
-    /** A position that must be a fluid/gas port; exposes a fluid handler. */
+    /** A position that must be a fluid port; exposes a fluid handler. */
     PORT_FLUID,
+
+    /** A position that must be a gas port; exposes a gas handler. */
+    PORT_GAS,
 
     /** A position that must be an energy port; exposes an energy storage. */
     PORT_ENERGY,
@@ -48,7 +51,8 @@ public enum PartRole {
 
     /** True when this role accepts one of the port blocks. */
     public boolean isPort() {
-        return this == PORT_ITEM || this == PORT_FLUID || this == PORT_ENERGY || this == PORT_ANY;
+        return this == PORT_ITEM || this == PORT_FLUID || this == PORT_GAS
+                || this == PORT_ENERGY || this == PORT_ANY;
     }
 
     /** True when this role is a free base cell rather than a fixed block. */

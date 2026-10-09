@@ -263,6 +263,15 @@ public abstract class MachineBlockEntity extends BlockEntity {
 
     /** Re-runs a provider-based structure check and fires the formed/unformed edge. */
     public final boolean revalidate(Level level, com.stardustindustry.stardustindustry.multiblock.provider.StructureProvider provider) {
+        // A chunk the structure reaches may be unloaded. Reading it would return
+        // air and make the machine look torn down, so the evaluation is skipped
+        // entirely: the current formed state, port bindings and stored contents
+        // stay exactly as they were until every chunk is back.
+        if (!com.stardustindustry.stardustindustry.multiblock.provider.StructureChunkGuard
+                .allLoaded(level, provider.footprint(worldPosition, facing()))) {
+            return formed;
+        }
+
         com.stardustindustry.stardustindustry.multiblock.provider.StructureEvaluation result =
                 provider.evaluate(level, worldPosition, facing());
         this.evaluation = result;
@@ -390,6 +399,14 @@ public abstract class MachineBlockEntity extends BlockEntity {
 
     /** Re-runs the structure check and fires the formed/unformed edge. */
     public final boolean revalidate(Level level, StructureDefinition definition) {
+        // Same rule as the provider path: never evaluate a multiblock whose
+        // chunks are not all loaded, or an unloaded neighbour reads as air and
+        // the machine appears broken.
+        if (!com.stardustindustry.stardustindustry.multiblock.provider.StructureChunkGuard
+                .allLoaded(level, definitionFootprint(definition))) {
+            return formed;
+        }
+
         StructureMatchResult result = StructureMatcher.match(level, worldPosition, definition, facing());
         boolean nowFormed = result.matched();
 
@@ -404,6 +421,28 @@ public abstract class MachineBlockEntity extends BlockEntity {
             setFormed(nowFormed);
         }
         return nowFormed;
+    }
+
+    /**
+     * The chunks a legacy (definition-based) structure may occupy, from its
+     * authored offsets under the controller's facing.
+     */
+    private java.util.Collection<net.minecraft.world.level.ChunkPos> definitionFootprint(StructureDefinition definition) {
+        net.minecraft.world.level.block.Rotation rotation =
+                com.stardustindustry.stardustindustry.multiblock.StructureRotation.forFacing(facing());
+        BlockPos min = worldPosition;
+        BlockPos max = worldPosition;
+        for (StructurePart part : definition.parts()) {
+            BlockPos world = worldPosition.offset(
+                    com.stardustindustry.stardustindustry.multiblock.StructureRotation.rotate(part.offset(), rotation));
+            min = new BlockPos(Math.min(min.getX(), world.getX()),
+                    Math.min(min.getY(), world.getY()),
+                    Math.min(min.getZ(), world.getZ()));
+            max = new BlockPos(Math.max(max.getX(), world.getX()),
+                    Math.max(max.getY(), world.getY()),
+                    Math.max(max.getZ(), world.getZ()));
+        }
+        return com.stardustindustry.stardustindustry.multiblock.provider.StructureChunkGuard.chunksOf(min, max);
     }
 
     /**
@@ -662,6 +701,13 @@ public abstract class MachineBlockEntity extends BlockEntity {
         }
         var provider = provider();
         if (provider == null) {
+            return false;
+        }
+
+        // Never install from a half-loaded footprint: an unloaded chunk reads as
+        // air, so the machine would be captured with a hole in it.
+        if (!com.stardustindustry.stardustindustry.multiblock.provider.StructureChunkGuard
+                .allLoaded(level, provider.footprint(worldPosition, facing()))) {
             return false;
         }
 

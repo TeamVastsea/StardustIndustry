@@ -2,14 +2,14 @@
   "type": "minecraft:crafting_shaped",
   "category": "misc",
   "pattern": [
-    "GG",
-    "GG"
+    "CC",
+    "CC"
   ],
   "key": {
-    "G": { "item": "minecraft:glass" }
+    "C": { "item": "stardustindustry:steel_casing" }
   },
   "result": {
-    "id": "stardustindustry:tank_glass",
+    "id": "stardustindustry:gas_tank_shell",
     "count": 4
   }
 }

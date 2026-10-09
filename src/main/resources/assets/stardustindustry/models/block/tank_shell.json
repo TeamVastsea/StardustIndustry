@@ -1,8 +1,0 @@
-{
-  "parent": "minecraft:block/cube_bottom_top",
-  "textures": {
-    "top": "stardustindustry:block/tank_shell_top",
-    "bottom": "stardustindustry:block/tank_shell_top",
-    "side": "stardustindustry:block/tank_shell_side"
-  }
-}

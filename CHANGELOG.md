@@ -3,6 +3,93 @@
 本项目每次推送都会在此记录变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循语义化版本。
 
+## [未发布]
+
+### 新增
+- **通用气体抽象（本模组自有，不依赖外部模组）**：`gas/Gas`（气体类型 + 色调）、
+  `gas/GasStack`（气体 + 量，单位 **mB**，NBT 往返）、`gas/IGasHandler`（仿 `IFluidHandler`）、
+  `gas/GasRegistry`（气体注册表）。内置氢/氧/氮/二氧化碳/蒸汽/天然气作占位。
+- **`GasBufferModule`**：储罐/机器内的气体仓，暴露 `IGasHandler`，容量由结构体积决定。
+- **`registry/ModCapabilityTypes`**：新增 `GAS_HANDLER`（`BlockCapability<IGasHandler, Void>`），
+  由气体端口与气体储罐外壳对外暴露。
+- **`gas_tank_shell`（气体储罐外壳）与 `lv_gas_port`（LV 气体端口）**：含方块实体、分类、
+  语言、模型、blockstate、配方、贴图（占位）。
+- **`machine/tank/TankMedium`**：`FLUID` / `GAS` 介质枚举，决定外壳方块、缓冲模块与渲染。
+- **`client/TankGasRenderer`**：气体**浓度**渲染（见下方「变更」）。
+- 语言新增 `gas.stardustindustry.*`（内置气体名）与气体储罐相关键。
+- **Mekanism 软依赖适配器（D7.11）**：气体端口现在可直接连接 Mekanism **加压管道**，
+  且**全部 Mekanism 化学品**（气体、浆液、灌注物、颜料，含核材料/放射性气体）都能存进气罐。
+  - 新建 `compat/mekanism/`：`MekanismGasBridge`（化学品 ↔ 气体互转，ID 保留 `mekanism:` 命名空间）、
+    `MekanismChemicalHandlerAdapter`（把本模组 `IGasHandler` 包成 Mek 的 `IChemicalHandler`）、
+    `MekanismCompat`（能力注册 + 全量化学品扫描）。
+  - 注册表冻结后一次性把全部化学品（实测 **65** 种）注册进 `GasRegistry`，另留惰性解析兑底。
+  - **软依赖**：用 `ModList.isLoaded("mekanism")` 先判后调，不装 Mekanism 时本模组照常运行、
+    气体端口仍暴露自建气体能力；不装时永不链接任何 Mek 类型。
+  - `build.gradle`：Mekanism **`compileOnly` + `localRuntime`**（开发环境实机测试用）；
+    `scripts/fetch-hud-libs.*` 增加 Mekanism 下载（CI 用）。
+
+### 修复
+- **跨区块多方块在区块卸载时误判解体（严重）**：多方块可横跨多个区块，而
+  `Level.getBlockState` 对**未加载区块返回空气**。此前储罐每 20 tick 重扫整个包围盒，一旦
+  储罐另一部分所在区块卸载（玩家走到视距边缘、或多人服务器里他人活动），未加载部分被当成
+  空气 → 储罐被判未成型、**端口解绑**、管道断开，区块回来后又成型，**反复抖动**；
+  更危险的是容量按结构体积计算，残缺包围盒可能导致**内容物被截断**。
+  - **规则**：结构覆盖的区块没有全部加载时，**跳过本次求值、冻结现状**（不判失败、不解绑、
+    不改容量、不广播），区块回来后自动恢复。
+  - `StructureProvider` 新增 `footprint(controller, facing)`（默认 `null` = 无限制）；
+    静态 provider 用模型精确几何，动态/储罐 provider 用 `reachChunks(controller, MAX_SIZE)` 预留最大范围。
+  - 新增 `StructureChunkGuard`（`allLoaded` / `chunksOf` / `reachChunks`，用 `>> 4` 正确处理负坐标）。
+  - `MachineBlockEntity.revalidate(...)` 与 `install()` 在求值/安装前检查，未全加载即冻结/拒绝。
+  - 自检新增 `MultiblockSelfCheck.checkChunkFootprint()`，钉住几何（含负数坐标回归用例）。
+  - **对静态与动态多方块一律生效**（不只是储罐）。
+- **气体颜色显示错误（红石/颜料显示为蓝色，或暗到看不出颜色）**：两个原因叠加。
+  1. **主因——采样了错误的贴图**：`RenderType.translucent()` 的着色器计算「纹理 × 顶点色」，
+     而气体顶点 UV 此前写死 `(0,0)`，采样到方块图集左上角的**任意像素（偏蓝）**，于是
+     **无论传什么 RGB 都被染成蓝色**。修复：新增 1×1 纯白方块贴图 `stardustindustry:block/gas_white`，
+     气体采样它的 UV，`纹理 = 白`，颜色完全由色调决定。
+  2. **次因——暗色调感知亮度低**：化学品原始色调过暗的（红石 `0xB30505`、碳 `0x2C2C2C`）
+     融进阴影像空罐。`TankGasRenderer` 新增 `normalizeTint`，在 **HSL 空间**保持色相、把明度抬到
+     0.62、饱和度抬到 0.55，近无彩色则给浅冷灰。红石修好后为鲜红、绿色颜料为鲜绿。
+  - 颜色源与 Mekanism 一致：`Gas` 的颜色就是 `Chemical.getColorRepresentation()`（即 `getTint()`），
+    与 Mek 自己的渲染用的是同一个值。
+  - **保持浓度模型统一**：所有气体（含 Mek 的颜料、浆液等非气体化学品）一律按浓度渲染，
+    最高透明度 **70%**，绝不完全不透明（否则看起来像一整块流体）。
+- **气体名称不翻译（HUD / 参数屏显示 `gas.mekanism:redstone`）**：`Gas` 新增可选 `nameKey` 字段，
+  Mekanism 桥接填入 `Chemical.getTranslationKey()`（即 `chemical.mekanism.redstone`），
+  直接复用 Mekanism 自带语言文件，显示为「红石 / Redstone」等真实名称；无 `nameKey` 时回退到自建键。
+
+### 变更
+- **只有端口对外暴露能力**：储罐**外壳（墙）不再暴露任何能力**，两种介质一致。
+  本次同时**移除了流体外壳原有的 `IFluidHandler` 注册**——此前流体储罐可被管道贴在罐壁上
+  绕过端口速率，气体储罐则不能；现在两者都只能通过端口进出。
+- **储罐重构为「同源双介质」**：抽出 `machine/tank/AbstractTankBlockEntity`（结构/锚点/容量/
+  客户端同步/参数屏/成型广播，全部介质无关），`TankBlockEntity` 改为**流体**子类，
+  新增 `GasTankBlockEntity`（**气体**子类，持 `GasBufferModule`）。两种储罐结构、规则、
+  容量公式、参数屏**完全一致**，唯一区别是介质。
+- **`TankShellBlock` 改为按介质构造**（`TankShellBlock(TankMedium, Properties)`），由介质决定 BE 类型。
+- **`TankStructureProvider` 改为介质感知**：从锚点外壳读出介质，只接受同介质外壳与端口；
+  `tank_frame` / `industrial_glass` 两种介质共用；混入异介质外壳视为搭建错误。
+- **气体渲染与流体不同**：流体看**液面高度**；气体看**浓度**——气体始终充满内腔、
+  **不随量改变高度**，空罐完全不渲染，随注入量颜色变浓，透明度最高到 **70%（alpha ≈ 0.70）**。
+  `client/MachineRenderer` 按介质分派 `TankLiquidRenderer` / `TankGasRenderer`。
+- **HUD 与参数屏介质化**：`TankHudData` / `TankHudLines` / TOP 插件识别两种外壳与气体端口，
+  增加一行介质名；`MachineParamsScreen` 按介质显示「流体储罐 / 气体储罐」与
+  「存储流体 / 存储气体」。
+- **`PartRole` 新增 `PORT_GAS`**；`StructureMatcher.describe` 同步补充。
+- **储罐部件命名正式化**（开发阶段一次改到位）：
+  - `tank_shell` → **`fluid_tank_shell`**（流体储罐外壳）
+  - `tank_glass` → **`industrial_glass`**（工业玻璃）
+  - `tank_frame`（储罐框架）保持不变，**流体/气体储罐共用**。
+  - 同步更新：注册 ID、Java 常量、语言键、方块/物品模型、blockstate、配方、贴图文件名、文档。
+
+### 文档
+- **`docs/multiblock-design.md` 升级 v2.2**：新增 §15「气体子系统与同源储罐」；
+  更新方块清单、目录结构、阶段表（D7.9 命名正式化、D7.10 气体储罐、D7.11 Mekanism 适配器）。
+- **`docs/tank-multiblock-design.md` 升级 v1.1**：流体/气体**共用同一文档**；
+  新增 §7「流体看液面，气体看浓度」、§16「气体子系统与 D7.10 落地清单」；
+  术语表、方块清单、端口、参数屏、HUD 数据源全部介质化。
+- `docs/terminology.md` 补充介质命名规则（`<medium>_tank_<part>` / 共用件无前缀）。
+
 ## [0.1.0] - 2026-10-08
 
 ### 修复

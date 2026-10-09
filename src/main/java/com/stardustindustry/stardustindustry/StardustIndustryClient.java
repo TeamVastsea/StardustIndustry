@@ -54,6 +54,8 @@ public class StardustIndustryClient {
         event.registerBlockEntityRenderer(
                 com.stardustindustry.stardustindustry.registry.ModBlockEntities.CRUSHER.get(), provider);
         event.registerBlockEntityRenderer(
-                com.stardustindustry.stardustindustry.registry.ModBlockEntities.TANK_SHELL.get(), provider);
+                com.stardustindustry.stardustindustry.registry.ModBlockEntities.FLUID_TANK_SHELL.get(), provider);
+        event.registerBlockEntityRenderer(
+                com.stardustindustry.stardustindustry.registry.ModBlockEntities.GAS_TANK_SHELL.get(), provider);
     }
 }

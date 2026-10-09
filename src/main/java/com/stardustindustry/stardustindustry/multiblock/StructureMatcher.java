@@ -67,6 +67,7 @@ public final class StructureMatcher {
             case CONTROLLER -> "controller";
             case PORT_ITEM -> "item port";
             case PORT_FLUID -> "fluid port";
+            case PORT_GAS -> "gas port";
             case PORT_ENERGY -> "energy port";
             case PORT_ANY -> "any port";
             case BASE_SLOT -> "base block, port or filler (slot must not be empty)";

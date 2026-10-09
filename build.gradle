@@ -159,6 +159,25 @@ dependencies {
 
     localRuntime "localLibs:theoneprobe-1.21-neo-12.0.8:"
 
+    // Mekanism, for the optional chemical bridge.
+    //
+    // Its whole chemical catalogue (gases, slurries, infusions, pigments,
+    // including nuclear materials) is mapped onto our own Gas abstraction, so a
+    // gas port can connect to Mekanism's Pressurized Tubes. This is a SOFT
+    // dependency: the bridge lives under compat/mekanism and is only wired when
+    // Mekanism is actually loaded, so the mod still runs — with its own gas
+    // capability — on a pack that does not ship Mekanism.
+    //
+    // compileOnly only: the dev run folders already carry the real Mekanism jar
+    // (plus its dependencies), so adding it again as localRuntime would just
+    // duplicate the mod on the classpath.
+    compileOnly "localLibs:Mekanism-1.21.1-10.7.19.85:"
+    // localRuntime so the dev run configs load Mekanism and the bridge can be
+    // exercised against real pipes. The regular run mods folders are managed by
+    // hand and do not list Mekanism, so this is the only place it enters the dev
+    // classpath.
+    localRuntime "localLibs:Mekanism-1.21.1-10.7.19.85:"
+
     // Example mod dependency using a mod jar from ./libs with a flat dir repository
     // This maps to ./libs/coolmod-${mc_version}-${coolmod_version}.jar
     // The group id is ignored when searching -- in this case, it is "blank"

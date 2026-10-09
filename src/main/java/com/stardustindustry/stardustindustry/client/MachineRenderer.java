@@ -69,10 +69,13 @@ public class MachineRenderer implements BlockEntityRenderer<MachineBlockEntity> 
             animator.animate(machine, partialTick, pose, buffers, packedLight, packedOverlay);
         }
 
-        // A tank shows its contents: the fluid box is drawn from the controller
-        // like the body, since the controller is the only cell with an entity.
+        // A tank shows its contents: the contents box is drawn from the controller
+        // like the body, since the controller is the only cell with an entity. A
+        // fluid tank draws its liquid by level, a gas tank its gas by concentration.
         if (machine instanceof com.stardustindustry.stardustindustry.machine.tank.TankBlockEntity tank) {
             TankLiquidRenderer.render(tank, pose, buffers, packedLight);
+        } else if (machine instanceof com.stardustindustry.stardustindustry.machine.tank.GasTankBlockEntity gas) {
+            TankGasRenderer.render(gas, pose, buffers, packedLight);
         }
     }
 
