@@ -41,7 +41,7 @@
 
 | 项 | 值 |
 |---|---|
-| 整合包 mods 目录 | `C:\Users\MCTV\Documents\Minecraft\.minecraft\versions\1.21.1-NeoForge\mods` |
+| 整合包 mods 目录 | `$env:USERPROFILE\Documents\Minecraft\.minecraft\versions\1.21.1-NeoForge\mods` |
 | 更新 jar | 构建后把 `stardustindustry-0.1.0.jar` 复制进去，**先删旧版** |
 | 高亮模组 | 整合包内**只保留 The One Probe（TOP）**一个，避免多个高亮叠加 |
 
@@ -97,7 +97,7 @@
 .\gradlew.bat build --no-configuration-cache
 
 # 2. 删除旧版并复制新版
-$target = "C:\Users\MCTV\Documents\Minecraft\.minecraft\versions\1.21.1-NeoForge\mods"
+$target = Join-Path $env:USERPROFILE "Documents\Minecraft\.minecraft\versions\1.21.1-NeoForge\mods"
 Remove-Item "$target\stardustindustry-*.jar" -Force -ErrorAction SilentlyContinue
 Copy-Item "$env:TEMP\stardustindustry-build\libs\stardustindustry-0.1.0.jar" $target -Force
 ```
