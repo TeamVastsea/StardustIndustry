@@ -4,7 +4,7 @@
 > 当前仓库内**所有贴图均为临时占位资源**（纯色/简单色块，16×16），
 > 仅为让方块在游戏里可辨认、可测试。正式美术资源到位后，请按本表逐一替换。
 >
-> 最后更新：0.1.0（高亮模组兼容 + 储罐动态多方块）
+> 最后更新：0.1.0（多模块拆分后路径已迁入 StardustIndustry-Core）
 >
 > 关于储罐框架/外壳/玻璃的**连接材质方案与美术出图清单**，请另见
 > [`docs/connected-textures-plan.md`](connected-textures-plan.md)。
@@ -17,7 +17,7 @@
 | --- | --- |
 | 分辨率 | 方块贴图 `16×16`（可后续升级 32×32，需同步 `pack.mcmeta`）；物品贴图 `16×16` |
 | 命名 | 小写 + 下划线，与**方块注册名**保持一致；多面方块用 `_top/_bottom/_side/_front` 后缀 |
-| 路径 | 方块：`src/main/resources/assets/stardustindustry/textures/block/<名称>.png`<br>物品：`src/main/resources/assets/stardustindustry/textures/item/<名称>.png` |
+| 路径 | 方块：`StardustIndustry-Core/src/main/resources/assets/stardustindustry/textures/block/<名称>.png`<br>物品：`StardustIndustry-Core/src/main/resources/assets/stardustindustry/textures/item/<名称>.png` |
 | 透明 | 需要透明/半透明的方块（如工业玻璃）必须用带 alpha 的 PNG |
 | 格式 | PNG，非动画方块不要用 `.mcmeta` |
 
@@ -32,7 +32,7 @@
 
 ### 2.1 储罐（Tank）——**优先替换**
 
-> **连接材质已从主模组剥离**：现在储罐所有方块都用**普通 cube 模型与默认贴图**，
+> **连接材质未进入 Core**：现在储罐所有方块都用**普通 cube 模型与默认贴图**，
 > 不再有 `_inner`、也没有连接覆盖模型。连接材质改由将来的**附属模组**处理，
 > 详见 [`docs/connected-textures-plan.md`](connected-textures-plan.md)。
 >
@@ -121,7 +121,7 @@
 3. ~~框架复用旧 LV 框架贴图~~ **已解决**：新增独立 `tank_frame.png`（占位）。
 4. **旧储罐遗留贴图已删除**：`tank_front.png / tank_side.png / tank_top.png`
    （`lv_frame.png` 仍被多方块基座使用，**不要删**）。
-5. **连接材质暂缓**：`_inner` 系列贴图与连接覆盖模型**已从主模组移除**，
+5. **连接材质暂缓**：`_inner` 系列贴图与连接覆盖模型**未纳入 Core**，
    改由将来的附属模组处理（见 `docs/connected-textures-plan.md`）。
 6. **气体储罐 / 气体端口贴图待出**：`gas_tank_shell_top.png` / `gas_tank_shell_side.png`
    需要一套与流体外壳可区分的气体罐外观；`lv_gas_port_top/side/bottom.png` 需要一套
@@ -132,7 +132,8 @@
 
 ## 五、替换流程（给美术/程序）
 
-1. 按 §二 / §三 找到目标文件名，**保持文件名与路径不变**，用新 PNG 覆盖。
+1. 在 `StardustIndustry-Core/src/main/resources/assets/stardustindustry/` 下按 §二 / §三
+   找到目标文件名，**保持文件名与路径不变**，用新 PNG 覆盖。
 2. 分辨率保持 `16×16`（如需 32×32，需同时告知程序调整 `pack.mcmeta` 的 `pack_format`/ 分辨率）。
 3. 本地验证：
    ```powershell

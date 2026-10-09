@@ -53,7 +53,8 @@
 
 ## 一之四、气体与 Mekanism 化学品的对应
 
-本模组的气体是**自有抽象**，Mekanism 适配器把其**全部化学品**映射进来（软依赖，不装 Mek 照常运行）：
+Core 的气体是**自有抽象**。独立的 MekanismEx 附属模组把 Mekanism 的**全部化学品**映射进来；
+Core 可单独运行，而安装 MekanismEx 时 Mekanism 是硬依赖：
 
 | 概念 | 说明 |
 |---|---|
@@ -70,7 +71,9 @@
 1. **中文文档**：`docs/` 下所有 Markdown、`CHANGELOG.md`。
 2. **代码注释**：Java 的 JavaDoc 与行内注释里，指代该容器时用「储罐」而非「坦克」。
    （代码**标识符**仍用英文 `tank` 系列命名，不强制翻译。）
-3. **游戏内文本**：`assets/stardustindustry/lang/zh_cn.json` 与 `en_us.json` 的所有显示文案。
+3. **游戏内文本**：Core 的
+   `StardustIndustry-Core/src/main/resources/assets/stardustindustry/lang/`，以及扩展各自资源命名空间下的
+   `lang/zh_cn.json` 与 `lang/en_us.json`。
 
 ---
 

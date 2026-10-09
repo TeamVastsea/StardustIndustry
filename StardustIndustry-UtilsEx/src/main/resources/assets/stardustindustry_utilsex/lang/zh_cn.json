@@ -1,0 +1,14 @@
+{
+  "hud.stardustindustry_utilsex.tank.size": "储罐：%s × %s × %s",
+  "hud.stardustindustry_utilsex.tank.contents": "内容物：%s（%s）",
+  "hud.stardustindustry_utilsex.tank.empty": "空",
+  "hud.stardustindustry_utilsex.tank.capacity": "容量：%s",
+  "hud.stardustindustry_utilsex.tank.percent": "（%s%%）",
+  "hud.stardustindustry_utilsex.tank.unformed": "储罐未成型",
+  "hud.stardustindustry_utilsex.tank.medium.fluid": "流体储罐",
+  "hud.stardustindustry_utilsex.tank.medium.gas": "气体储罐",
+  "config.jade.plugin_stardustindustry_utilsex.tank_contents": "储罐内容物",
+  "config.waila.plugin_stardustindustry_utilsex.tank": "储罐内容物",
+  "jei.stardustindustry_utilsex.category.crushing": "破碎",
+  "jei.stardustindustry_utilsex.chance": "产出概率：%s%%"
+}

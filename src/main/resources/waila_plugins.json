@@ -1,9 +1,0 @@
-{
-  "stardustindustry:tank": {
-    "entrypoints": {
-      "client": "com.stardustindustry.stardustindustry.compat.wthit.TankWthitPlugin"
-    },
-    "side": "client",
-    "required": ["wthit"]
-  }
-}

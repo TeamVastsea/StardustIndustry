@@ -11,22 +11,23 @@
   `gas/GasRegistry`（气体注册表）。内置氢/氧/氮/二氧化碳/蒸汽/天然气作占位。
 - **`GasBufferModule`**：储罐/机器内的气体仓，暴露 `IGasHandler`，容量由结构体积决定。
 - **`registry/ModCapabilityTypes`**：新增 `GAS_HANDLER`（`BlockCapability<IGasHandler, Void>`），
-  由气体端口与气体储罐外壳对外暴露。
+  仅由气体端口对外暴露。
 - **`gas_tank_shell`（气体储罐外壳）与 `lv_gas_port`（LV 气体端口）**：含方块实体、分类、
   语言、模型、blockstate、配方、贴图（占位）。
 - **`machine/tank/TankMedium`**：`FLUID` / `GAS` 介质枚举，决定外壳方块、缓冲模块与渲染。
 - **`client/TankGasRenderer`**：气体**浓度**渲染（见下方「变更」）。
 - 语言新增 `gas.stardustindustry.*`（内置气体名）与气体储罐相关键。
-- **Mekanism 软依赖适配器（D7.11）**：气体端口现在可直接连接 Mekanism **加压管道**，
+- **MekanismEx 独立附属模组（D7.11）**：气体端口现在可直接连接 Mekanism **加压管道**，
   且**全部 Mekanism 化学品**（气体、浆液、灌注物、颜料，含核材料/放射性气体）都能存进气罐。
-  - 新建 `compat/mekanism/`：`MekanismGasBridge`（化学品 ↔ 气体互转，ID 保留 `mekanism:` 命名空间）、
+  - 实现迁入 `StardustIndustry-MekanismEx`：`MekanismGasBridge`（化学品 ↔ 气体互转，ID 保留 `mekanism:` 命名空间）、
     `MekanismChemicalHandlerAdapter`（把本模组 `IGasHandler` 包成 Mek 的 `IChemicalHandler`）、
     `MekanismCompat`（能力注册 + 全量化学品扫描）。
   - 注册表冻结后一次性把全部化学品（实测 **65** 种）注册进 `GasRegistry`，另留惰性解析兑底。
-  - **软依赖**：用 `ModList.isLoaded("mekanism")` 先判后调，不装 Mekanism 时本模组照常运行、
-    气体端口仍暴露自建气体能力；不装时永不链接任何 Mek 类型。
-  - `build.gradle`：Mekanism **`compileOnly` + `localRuntime`**（开发环境实机测试用）；
-    `scripts/fetch-hud-libs.*` 增加 Mekanism 下载（CI 用）。
+  - Core 对 Mekanism 零依赖；MekanismEx 自身将 Core 与 Mekanism 声明为硬依赖。
+  - `StardustIndustry-MekanismEx/build.gradle.kts` 以 `compileOnly` 编译 Mekanism API；Core 的
+    `localRuntime` 仅用于统一开发客户端实机测试。
+- **AE2Ex 独立附属模组骨架**：新增独立入口、模组 ID、元数据和发布 JAR，硬依赖 Core 与 AE2；
+  当前没有 AE2 业务实现。
 
 ### 修复
 - **跨区块多方块在区块卸载时误判解体（严重）**：多方块可横跨多个区块，而
@@ -59,6 +60,12 @@
   直接复用 Mekanism 自带语言文件，显示为「红石 / Redstone」等真实名称；无 `nameKey` 时回退到自建键。
 
 ### 变更
+- **工程改为 Gradle Kotlin DSL 多项目构建**：根业务 `src/` 拆为 Core、UtilsEx、MekanismEx、
+  AE2Ex 四个独立模块；每个模块拥有自己的 `src`、`@Mod` 入口、元数据和 JAR。根 `build` 汇总
+  四个产物，根 `runClient` 只启动一个 Core 客户端并自动装入三个扩展 JAR。
+- **第三方 API 与 Core 解耦**：JEI/Jade/WTHIT/TOP 迁入 UtilsEx，Mekanism 桥接迁入
+  MekanismEx；Core 源码不再导入这些 API。UtilsEx 的工具模组依赖为可选，MekanismEx/AE2Ex
+  的对应外部模组依赖为必需。
 - **只有端口对外暴露能力**：储罐**外壳（墙）不再暴露任何能力**，两种介质一致。
   本次同时**移除了流体外壳原有的 `IFluidHandler` 注册**——此前流体储罐可被管道贴在罐壁上
   绕过端口速率，气体储罐则不能；现在两者都只能通过端口进出。
@@ -83,6 +90,10 @@
   - 同步更新：注册 ID、Java 常量、语言键、方块/物品模型、blockstate、配方、贴图文件名、文档。
 
 ### 文档
+- 新增 `docs/README.md` 文档索引与权威层级；新增 `docs/module-architecture.md`，记录模块职责、
+  依赖图、构建/运行链路、安装组合和扩展准入规则。
+- 重写 `docs/dev-environment.md`，覆盖跨平台首次构建、根任务、四 JAR 发布、联合客户端和验证矩阵；
+  同步修正设计稿、术语与材质手册中的旧根 `src/` 路径和兼容层归属。
 - **`docs/multiblock-design.md` 升级 v2.2**：新增 §15「气体子系统与同源储罐」；
   更新方块清单、目录结构、阶段表（D7.9 命名正式化、D7.10 气体储罐、D7.11 Mekanism 适配器）。
 - **`docs/tank-multiblock-design.md` 升级 v1.1**：流体/气体**共用同一文档**；

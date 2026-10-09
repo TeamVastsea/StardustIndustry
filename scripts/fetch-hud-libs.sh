@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Downloads the highlight-tooltip mod jars that build.gradle expects under libs/.
+# Downloads extension compile/runtime jars that the Kotlin multi-project build
+# expects under libs/.
 #
 # These jars are intentionally NOT committed: they are third-party binaries that
 # move independently of our source, and libs/ is gitignored so a checkout stays
 # small. CI therefore has to fetch them before ./gradlew build, and this script
 # is that one step, so the local and CI setups cannot drift.
 #
-# The file names on the right match the coordinates in build.gradle exactly;
+# The file names on the right match the coordinates in the module build.gradle.kts files;
 # Modrinth sometimes spells them with underscores, so each download is written
 # out with an explicit -o name rather than trusting the server's filename.
 set -euo pipefail
@@ -38,9 +39,16 @@ fetch "https://cdn.modrinth.com/data/ftdbN0KK/versions/RNyYl9M3/badpackets-neo-0
 fetch "https://cdn.modrinth.com/data/Eyw0UxEx/versions/4bbMy0Mh/theoneprobe-1.21_neo-12.0.8.jar" \
       "theoneprobe-1.21-neo-12.0.8.jar"
 
-# Mekanism: optional chemical bridge (soft dependency). Needed at compile time
-# for compat/mekanism; at runtime a pack may or may not ship it.
+# Mekanism: hard dependency of StardustIndustry-MekanismEx. Core never loads it.
 fetch "https://cdn.modrinth.com/data/Ce6I4WUE/versions/5KzzycBT/Mekanism-1.21.1-10.7.19.85.jar" \
       "Mekanism-1.21.1-10.7.19.85.jar"
 
-echo "Highlight-tooltip + Mekanism libs ready in libs/"
+# Applied Energistics 2: hard dependency of StardustIndustry-AE2Ex.
+fetch "https://cdn.modrinth.com/data/XxWD5pD3/versions/KDnFUmMm/appliedenergistics2-19.2.18.jar" \
+      "appliedenergistics2-19.2.18.jar"
+
+# AE2's in-game documentation library.
+fetch "https://cdn.modrinth.com/data/Ck4E7v7R/versions/hFpGwC6q/guideme-21.1.19.jar" \
+      "guideme-21.1.19.jar"
+
+echo "Extension libraries ready in libs/"

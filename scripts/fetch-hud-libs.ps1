@@ -1,12 +1,12 @@
-# Downloads the highlight-tooltip mod jars that build.gradle expects under libs/.
+# Downloads extension compile/runtime jars that the Kotlin multi-project build
+# expects under libs/.
 #
 # Windows twin of scripts/fetch-hud-libs.sh. The two must stay in step: the same
-# four jars, the same local file names, so a build behaves identically on a
+# jars and local file names, so a build behaves identically on a
 # developer machine and on CI.
 #
 # These jars are intentionally not committed (libs/ is gitignored); a fresh
-# checkout runs this once to make the highlight-mod compile dependencies
-# resolvable.
+# checkout runs this once to make the extension compile dependencies resolvable.
 param()
 $ErrorActionPreference = "Stop"
 
@@ -38,9 +38,16 @@ Fetch "https://cdn.modrinth.com/data/ftdbN0KK/versions/RNyYl9M3/badpackets-neo-0
 Fetch "https://cdn.modrinth.com/data/Eyw0UxEx/versions/4bbMy0Mh/theoneprobe-1.21_neo-12.0.8.jar" `
       "theoneprobe-1.21-neo-12.0.8.jar"
 
-# Mekanism: optional chemical bridge (soft dependency). Needed at compile time
-# for compat/mekanism; at runtime a pack may or may not ship it.
+# Mekanism: hard dependency of StardustIndustry-MekanismEx. Core never loads it.
 Fetch "https://cdn.modrinth.com/data/Ce6I4WUE/versions/5KzzycBT/Mekanism-1.21.1-10.7.19.85.jar" `
       "Mekanism-1.21.1-10.7.19.85.jar"
 
-Write-Output "Highlight-tooltip + Mekanism libs ready in libs/"
+# Applied Energistics 2: hard dependency of StardustIndustry-AE2Ex.
+Fetch "https://cdn.modrinth.com/data/XxWD5pD3/versions/KDnFUmMm/appliedenergistics2-19.2.18.jar" `
+      "appliedenergistics2-19.2.18.jar"
+
+# AE2's in-game documentation library.
+Fetch "https://cdn.modrinth.com/data/Ck4E7v7R/versions/hFpGwC6q/guideme-21.1.19.jar" `
+      "guideme-21.1.19.jar"
+
+Write-Output "Extension libraries ready in libs/"

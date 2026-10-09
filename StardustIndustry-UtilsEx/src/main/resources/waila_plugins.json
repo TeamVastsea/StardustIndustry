@@ -1,0 +1,9 @@
+{
+  "stardustindustry_utilsex:tank": {
+    "entrypoints": {
+      "client": "com.stardustindustry.utilsex.wthit.TankWthitPlugin"
+    },
+    "side": "client",
+    "required": ["wthit"]
+  }
+}

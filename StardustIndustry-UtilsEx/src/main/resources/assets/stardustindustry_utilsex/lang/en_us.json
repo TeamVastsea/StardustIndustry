@@ -1,0 +1,14 @@
+{
+  "hud.stardustindustry_utilsex.tank.size": "Tank: %s x %s x %s",
+  "hud.stardustindustry_utilsex.tank.contents": "Contents: %s (%s)",
+  "hud.stardustindustry_utilsex.tank.empty": "Empty",
+  "hud.stardustindustry_utilsex.tank.capacity": "Capacity: %s",
+  "hud.stardustindustry_utilsex.tank.percent": "(%s%%)",
+  "hud.stardustindustry_utilsex.tank.unformed": "Tank not formed",
+  "hud.stardustindustry_utilsex.tank.medium.fluid": "Fluid Tank",
+  "hud.stardustindustry_utilsex.tank.medium.gas": "Gas Tank",
+  "config.jade.plugin_stardustindustry_utilsex.tank_contents": "Tank Contents",
+  "config.waila.plugin_stardustindustry_utilsex.tank": "Tank Contents",
+  "jei.stardustindustry_utilsex.category.crushing": "Crushing",
+  "jei.stardustindustry_utilsex.chance": "Chance: %s%%"
+}

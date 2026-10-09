@@ -1,4 +1,4 @@
-# 星砾工业 · 储罐多方块设计文档（v1.1）
+# 星砾工业 · 储罐多方块设计文档（v1.2）
 
 > 本文档是**储罐（Tank）**这一多方块结构的完整、独立、权威设计依据，**流体储罐与气体储罐共用本文档**。
 > 凡与储罐相关的内容，以本文档为准；总框架文档
@@ -8,9 +8,13 @@
 > v1.1 变更：**储罐分介质**——流体储罐与气体储罐**结构、规则完全一致**，仅介质不同；
 > 部件**命名正式化**（`fluid_tank_shell` / `gas_tank_shell` / `industrial_glass` / `lv_gas_port`）；
 > 新增**罐内气体渲染 = 浓度**（区别于流体的液面）；新增**通用气体抽象**（见 §16）；
-> 新增 **Mekanism 软依赖适配器**（§17），含色调归一化与名称翻译。
+> 新增独立的 **MekanismEx 附属模组**（§17），含色调归一化与名称翻译。
+> v1.2 变更：明确 Core/UtilsEx/MekanismEx 的代码归属，并按当前 `TankHudData` 实现修正 HUD 字段、
+> 显示内容和依赖说明。
 >
-> 文档状态：**设计定稿，流体版已实现、气体版落地中**。文中标注「本轮」= 第一版落地范围；
+> 模块边界与依赖规则见 [`module-architecture.md`](./module-architecture.md)。
+>
+> 文档状态：**设计定稿，流体版与气体版均已实现**。文中标注「本轮」= 第一版落地范围；
 > 标注「后续」= 明确不在本轮、为将来预留。
 
 ---
@@ -291,7 +295,7 @@ n = 3 … 9       （每轴；默认上限 9，见配置）
   介质，**手上物品不消耗、不产出**（用于建造与调试）。手持满容器则注入该容器容量，
   手持空容器则抽出该容器可容纳的量。
 - **气体容器交互（后续 D7.11）**：气体版本的容器右键交互依赖各气体模组（Mekanism 等）的
-  容器物品，待软依赖适配器就绪后补齐；本轮气体端口只做管道对接。
+  容器物品，待对应扩展实现后补齐；本轮气体端口只做管道对接。
 - 参数 GUI 采用 §4.6.1 的统一新格式（已实现），**流体 / 气体同一版式**，字段固定为：
   ```
   多方块结构已成型！          ← 亮黄色；未成型时改为中性提示且不再列后续字段
@@ -321,50 +325,48 @@ n = 3 … 9       （每轴；默认上限 9，见配置）
 
 ## 10. 高亮模组兼容（HUD / 指向显示）
 
-> 目标：**支持主流高亮模组**（本模组**只保留 The One Probe（TOP）**这一款高亮整合，
-> 见 `terminology.md` / `multiblock-design.md` 的结论），
+> 目标：由 UtilsEx **支持 Jade、WTHIT 与 The One Probe（TOP）**；默认开发客户端只加载 TOP，
+> Jade/WTHIT 使用独立实例验证。
 > 让玩家把准星指向储罐的**任意一个方块**（框架 / 外壳 / 工业玻璃 / 端口），
 > 高亮信息栏都能直接读出这台储罐的**介质与容积**。
-> 本节写的是「统一数据源 + 每模组一个薄插件」的设计；各插件具体 API 包名在实现时
-> 以该模组在 NeoForge 1.21.1 的当前编译 API 为准（下表为常见路径，部分插件已实现并保留）。
+> 本节写的是当前已经实现的「统一数据源 + 每模组一个薄插件」。
 
 ### 10.1 目标行为
 
 | 指向的方块 | 显示内容 |
 |---|---|
-| 储罐外壳（锚点） | 介质 + 成型状态 + 尺寸 + 介质名 + 存量/容积 + 输入/输出速率 |
-| 储罐框架 / 工业玻璃 | **同一台**储罐的介质 + 成型状态 + 介质名 + 存量/容积 |
-| 对应介质端口 | 同一台储罐的介质名 + 存量/容积 + 该端口等级 |
-| 未成型储罐 | 显示「未成型」并给出第一条失败原因（含坐标，见 §9） |
+| 储罐外壳（锚点） | 成型状态、尺寸、内容物、存量、容积/百分比、介质 |
+| 储罐框架 / 工业玻璃 | 反查锚点后显示同一份储罐信息 |
+| 对应介质端口 | 反查锚点后显示同一份储罐信息；当前不单独显示端口等级 |
+| 未成型储罐 | 显示「未成型」；若仍有内容则继续显示内容物和存量 |
 
-- 指向**框架与端口**时显示**完全相同的内容**（都反查同一台储罐的锚点）。
-- 显示的**存量/容积**同时给两种单位：`mB`（精确）与**桶**（好读），例如
-  `铁熔浆 12 400 mB / 43 904 000 mB（12.4 桶 / 43 904 桶）`。
-- 所有数据来自服务器侧同一份只读快照，客户端高亮插件**不做任何重算**。
+- 指向框架、玻璃和端口时都通过 `TankHudAccess` 找到同一锚点。
+- 数量小于 1000 mB 时显示整数 `mB`；达到 1000 mB 后显示一位小数的桶数，例如 `12.4 B`。
+- 容量行在有内容且容量有效时附加整数百分比。
+- HUD 从客户端已同步的方块实体状态构建只读快照，不修改世界状态。
 
 ### 10.2 统一数据源：TankHudData
 
-一个与具体模组无关的只读快照（字段由 `AbstractTankBlockEntity` 在每次显示时按需生成）：
+UtilsEx 使用一个与具体 HUD 模组无关的只读快照：
 
 ```java
 public record TankHudData(
-    boolean formed,        // 是否已成型
-    int[]   size,          // 外壳尺寸 [x,y,z]，未成型为空
-    String  medium,        // 介质名（"fluid" / "gas"），用于本地化标题
-    String  contentName,   // 当前介质名，空 = 「空」
-    int     amountMb,      // 存量 mB
-    int     capacityMb,    // 容积 mB
-    int     inRate,        // 输入速率 mB/s
-    int     outRate,       // 输出速率 mB/s
-    String  portTier,      // 指向的端口等级（指向端口时才有）
-    Component firstError   // 未成型时第一条失败原因（含坐标），成型为空
+    TankMedium medium,
+    boolean formed,
+    int sizeX,
+    int sizeY,
+    int sizeZ,
+    Component contentsName,
+    int contentsAmount,
+    int capacityMb,
+    int interiorCells
 ) { }
 ```
 
-- 生成入口：`TankHudData.of(MachineBlockEntity controller)`——从锚点方块实体读出
-  介质缓冲模块、评估结果、端口等级。
-- 该快照与 `MachineParamsData`（§9 的 GUI）**同源**：两者共用缓冲模块的
-  `amount()/capacity()/inputRate()/outputRate()`，保证 GUI 与高亮栏永远一致。
+- 生成入口：`TankHudData.of(AbstractTankBlockEntity tank, BlockPos clickedPos)`。
+- 服务端有 `StructureEvaluation` 时直接读取尺寸；客户端则从同步的包围盒重建尺寸。
+- 内容物、存量和容量统一通过 `AbstractTankBlockEntity` 的介质无关接口读取。
+- `clickedPos` 当前仅为将来的逐面/端口信息预留，不影响现有快照内容。
 
 ### 10.3 成员归属表：TankMembershipRegistry
 
@@ -389,25 +391,25 @@ public record TankHudData(
 | HWYLA | — | **无需单独插件**：HWYLA 是 WTHIT 的前身，1.21.1 上活跃的是 WTHIT；装有 HWYLA 时由其自身兼容层处理 | — |
 
 - 每个插件类**只做一件事**：拿到 `TankHudData`，转成该模组的文本行。
-  文本措辞与格式统一由 `compat/hud/TankHudLines` 生成，三种模组显示一致。
+  文本措辞与格式统一由 UtilsEx 的 `hud/TankHudLines` 生成，三种模组显示一致。
 - 插件类引用各自模组的 API；**仅在对应模组被加载时**由该模组自身的插件发现机制实例化，
-  避免 `ClassNotFound`（详见 §10.5）。TOP 无发现机制，由 `compat/hud/HighlightCompat`
+  避免 `ClassNotFound`（详见 §10.5）。TOP 无发现机制，由 UtilsEx 的 `hud/HighlightCompat`
   在 `ModList` 守卫下主动发送 IMC 消息。
 
 
-### 10.5 依赖策略（软依赖）
+### 10.5 UtilsEx 的可选依赖策略
 
 - 编译期：`compileOnly` 引入各高亮模组 API（WTHIT / Jade / TOP），类只在这些模组存在时加载。
 - 运行期：**可选**——不安装高亮模组时储罐功能完全不受影响。
 - `neoforge.mods.toml`：为各高亮模组声明 **optional 依赖**，便于日志与依赖管理，
   但**不强制**。
-- 开发环境：`localRuntime` **只挂 The One Probe 一个高亮模组**（`build.gradle`）。
+- 开发环境：Core 的 `localRuntime` **只挂 The One Probe 一个高亮模组**（`build.gradle.kts`）。
   Jade / WTHIT 仅编译期参与。这是刻意为之：WTHIT 与 Jade 同处一个 classpath 时，
   WTHIT 的 `IClientApiService` 服务加载器会发生冲突
   （`ServiceConfigurationError: ClientApiService not a subtype`），进入世界即崩溃。
   要验证 Jade / WTHIT 插件，用一个只装该模组的整合包单独跑。
-- 与 JEI 一致：走 `compat/` 目录 + 独立的 `IBlockComponentProvider` / 插件注册，
-  保持主代码零依赖。
+- 与 JEI 一致：实现位于独立 UtilsEx 模块，通过 `IBlockComponentProvider` / 插件注册，
+  保持 Core 对第三方模组 API 零依赖。
 
 ### 10.6 显示内容在哪些状态出现
 
@@ -444,36 +446,31 @@ public record TankHudData(
 
 ---
 
-## 12. 与实现相关的文件（规划）
+## 12. 当前实现归属
 
-| 作用 | 文件（新建 / 修改） |
-|---|---|
-| 结构判定 | `multiblock/provider/TankStructureProvider.java`（新建，洪水填充；**已改为介质感知**） |
-| 介质枚举 | `machine/tank/TankMedium.java`（新建，`FLUID` / `GAS`） |
-| 储罐共用基类 | `machine/tank/AbstractTankBlockEntity.java`（新建，结构/锚点/容量/同步/参数/广播） |
-| 流体储罐控制器 | `machine/tank/TankBlockEntity.java`（改为 `AbstractTankBlockEntity` 的流体子类） |
-| 气体储罐控制器 | `machine/tank/GasTankBlockEntity.java`（新建，用 `GasBufferModule`） |
-| 储罐外壳方块 | `machine/tank/TankShellBlock.java`（新建，带 BE，按 `TankMedium` 选 BE 类型） |
-| 储罐框架方块 | `machine/tank/TankFrameBlock.java`（新建） |
-| 工业玻璃方块 | `machine/tank/TankGlassBlock.java`（新建；由 `tank_glass` 更名） |
-| 流体模块 | `machine/module/FluidBufferModule.java`（**扩展**：容量来自体积） |
-| 气体模块 | `machine/module/GasBufferModule.java`（新建，见 §16） |
-| 气体抽象 | `gas/Gas.java`、`gas/GasStack.java`、`gas/IGasHandler.java`、`gas/GasRegistry.java`（新建） |
-| 气体端口 BE | `machine/port/GasPortBlockEntity.java`（新建） |
-| 能力类型 | `registry/ModCapabilityTypes.java`（新建，`GAS_HANDLER`） |
-| 注册 | `registry/ModBlocks.java`、`registry/ModBlockEntities.java`、`registry/ModCapabilities.java` |
-| 分类 | `multiblock/MachinePartTypes.java`（`tank_frame` / `*_tank_shell` / `industrial_glass` 分类；新增 `PORT_GAS`） |
-| 配置 | `Config.java`（新增 §8 三键） |
-| 客户端液面 | `client/TankLiquidRenderer.java`（新建 BER，仅画液面） |
-| 客户端浓度 | `client/TankGasRenderer.java`（新建 BER，按 §7.2 画浓度） |
-| 渲染分派 | `client/MachineRenderer.java`（按介质选液面 / 浓度渲染器） |
-| HUD 统一数据 | `compat/hud/TankHudData.java`、`compat/hud/TankHudAccess.java` |
-| HUD 成员表 | `compat/hud/TankMembershipRegistry.java`（见 §10.3） |
-| HUD 插件 | `compat/top/…`（保留 TOP，见 §10.4） |
-| 语言 | `lang/zh_cn.json`、`lang/en_us.json`（含 `gas.stardustindustry.*`） |
-| 资源 | `blockstates/`、`models/block/`、`models/item/`、`textures/block/` 下新增各套方块 |
-| 依赖 | `build.gradle`（高亮模组 `compileOnly` + 开发环境 `localRuntime`） |
-| 旧物清理 | 删除 `machine/tank/TankBlock.java`、`tank` 注册、`lv_frame` 注册与资源、旧 `tank` 资源 |
+表中的 Core Java 路径相对于
+`StardustIndustry-Core/src/main/java/com/stardustindustry/stardustindustry/`；UtilsEx Java 路径相对于
+`StardustIndustry-UtilsEx/src/main/java/com/stardustindustry/utilsex/`。
+
+| 作用 | 模块 | 相对路径 |
+|---|---|---|
+| 结构判定 | Core | `multiblock/provider/TankStructureProvider.java` |
+| 介质枚举 | Core | `machine/tank/TankMedium.java` |
+| 储罐共用基类 | Core | `machine/tank/AbstractTankBlockEntity.java` |
+| 流体/气体控制器 | Core | `machine/tank/TankBlockEntity.java`、`GasTankBlockEntity.java` |
+| 外壳/框架/玻璃 | Core | `machine/tank/TankShellBlock.java`、`TankFrameBlock.java`、`TankGlassBlock.java` |
+| 流体/气体缓冲 | Core | `machine/module/FluidBufferModule.java`、`GasBufferModule.java` |
+| 气体抽象 | Core | `gas/Gas.java`、`GasStack.java`、`IGasHandler.java`、`GasRegistry.java` |
+| 气体端口 BE | Core | `machine/port/GasPortBlockEntity.java` |
+| 能力与注册 | Core | `registry/ModCapabilityTypes.java`、`ModCapabilities.java`、`ModBlocks.java`、`ModBlockEntities.java` |
+| 成员归属/HUD 查询 | Core | `multiblock/TankMembershipRegistry.java`、`machine/tank/TankHudAccess.java` |
+| 液面/浓度渲染 | Core | `client/TankLiquidRenderer.java`、`TankGasRenderer.java`、`MachineRenderer.java` |
+| HUD 数据与统一文案 | UtilsEx | `hud/TankHudData.java`、`hud/TankHudLines.java` |
+| HUD 插件 | UtilsEx | `jade/TankJadePlugin.java`、`wthit/TankWthitPlugin.java`、`top/TankTopPlugin.java` |
+| JEI 插件 | UtilsEx | `jei/StardustJeiPlugin.java`、`jei/CrushingCategory.java` |
+| Mekanism chemical 桥接 | MekanismEx | `com/stardustindustry/mekanismex/` 下三个桥接类 |
+| Core 语言与模型 | Core | `src/main/resources/assets/stardustindustry/` |
+| UtilsEx 翻译 | UtilsEx | `src/main/resources/assets/stardustindustry_utilsex/lang/` |
 
 ---
 
@@ -499,7 +496,7 @@ public record TankHudData(
 - [x] **T1.11 HUD 统一数据与成员表**：`TankHudData` / `TankHudAccess` / `TankMembershipRegistry`
       （见 §10.2/§10.3），成型建表、破坏注销。
 - [x] **T1.12 HUD 插件**：Jade / WTHIT / TOP 插件各一个薄层（见 §10.4），
-      `build.gradle` 加 `compileOnly` + `localRuntime` 软依赖；任意储罐方块指向可见流体与容积。
+      UtilsEx 以 `compileOnly` 编译 API，Core 开发运行时加载 TOP；任意储罐方块指向可见流体与容积。
 - [x] **T1.13 验证**：全量编译 + `runServer`（自检通过）。
 - [x] **T1.14 打包同步**：重新打包 `0.1.0`，同步到客户端 `mods/` 与 `dist/`。
 - [x] **T1.16 储罐参数界面**：按 §4.6.1 统一格式重做 `MachineParamsScreen` 的储罐布局
@@ -554,7 +551,7 @@ public record TankHudData(
 - 精准速率调节（按 mB/t 设定端口吞吐上限）。
 - 介质过滤界面（白名单 / 黑名单）。
 - **气体端口 MV/HV/EHV**（本轮气体端口先实现 LV，其余按同模式扩展）。
-- **Mekanism 软依赖适配器（D7.11）**：全部化学品（含核材料/放射性气体）→ `Gas`；
+- **MekanismEx 独立附属模组（D7.11）**：全部化学品（含核材料/放射性气体）→ `Gas`；
   气体容器手动右键交互。
 - 蒸汽锅炉、发酵罐等其它动态结构（将各自单独立文档）。
 - 储罐与管道网络的统一路由（若主文档后续引入）。
@@ -569,7 +566,7 @@ public record TankHudData(
 |---|---|
 | 最小组件 | **3×3×3**（内部 1 格） |
 | 有无等级 | **无**；只有框架、外壳、玻璃三种结构方块 |
-| 端口范围 | 只接受 **4 种等级流体端口**，只放**非框架**位置 |
+| 端口范围 | 按储罐介质只接受对应的 **LV/MV/HV/EHV 流体或气体端口**，只放**非框架**位置 |
 | 储量公式 | `内部空气格数 × 128 桶`；可配置 |
 | 内部要求 | **必须全空气**；否则报错**并给坐标** |
 | 成型方式 | **自动成型**，无需安装工具 |
@@ -577,7 +574,7 @@ public record TankHudData(
 | 液面 | 参考**匠魂**，玻璃处可见 |
 | 锚点 | **储罐外壳兼任**；安装工具右键任意部件开 GUI |
 | 判定算法 | **洪水填充** |
-| 高亮模组 | **只保留 The One Probe（TOP）**；任意储罐方块显示介质与容积，框架与端口显示相同内容 |
+| 高亮模组 | UtilsEx 支持 Jade/WTHIT/TOP；默认开发客户端使用 TOP，任意储罐方块显示同一份介质与容积信息 |
 | 旧演示储罐 | **删除** |
 
 ---
@@ -586,19 +583,19 @@ public record TankHudData(
 
 ### 16.1 为什么自建气体抽象
 
-原版没有「气体」，唯一通用来源是 Mekanism 的化学品（chemical）。把 Mekanism 当硬前置
-会让本模组被外部模组绑架；完全不做则储罐永远只有液体。故本模组**自建一层最小气体抽象**，
-把 Mekanism 作为**软依赖**适配进来：
+原版没有「气体」，唯一通用来源是 Mekanism 的化学品（chemical）。让 Core 把 Mekanism 当硬前置
+会使核心功能被外部模组绑架；完全不做则储罐永远只有液体。故 Core **自建一层最小气体抽象**，
+再由可选安装、但自身硬依赖 Mekanism 的 MekanismEx 模块完成对接：
 
 | 层 | 内容 | 说明 |
 |---|---|---|
 | 核心抽象 | `Gas` / `GasStack` / `IGasHandler` / `GasRegistry` | 本模组自有，**不依赖外部模组**；单位 **mB**（与流体一致） |
 | 缓冲模块 | `GasBufferModule` | 储罐/机器内的气体仓，暴露 `IGasHandler` |
 | 能力注册 | `ModCapabilityTypes.GAS_HANDLER`（`BlockCapability<IGasHandler, Void>`） | **仅气体端口**对外暴露（外壳不暴露，见 §17.4） |
-| 兼容层（D7.11） | `compat/mekanism` | 把 Mekanism 全部化学品映射为 `Gas`；Mekanism 不在时照常运行 |
+| 兼容层（D7.11） | `StardustIndustry-MekanismEx` | 把 Mekanism 全部化学品映射为 `Gas`；Core 不依赖 Mekanism |
 
 - `GasRegistry` 内置常见工业气体（氢/氧/氮/二氧化碳/蒸汽/天然气）作占位；
-  装了 Mekanism 则其**全部**化学品（含**核材料、放射性气体**）经适配器进入注册表。
+  同时安装 Mekanism 与 MekanismEx 后，其**全部**化学品（含**核材料、放射性气体**）经适配器进入注册表。
 - 单位与流体一致（mB），故容量公式、速率表、参数屏格式**两种介质完全通用**。
 
 ### 16.2 同源实现（代码结构）
@@ -632,20 +629,21 @@ AbstractTankBlockEntity           ← 结构/锚点/容量/同步/参数屏/成�
 - [x] **T2.9 参数屏介质化**：`MachineParamsScreen` 按介质显示「流体储罐 / 气体储罐」
       与「存储流体 / 存储气体」。
 - [x] **T2.10 自检**：`MultiblockSelfCheck` 增加两种外壳的 SHELL 分类、介质自报、储罐部件不得带等级。
-- [x] **T2.11 Mekanism 软依赖适配器（D7.11）**：见 §17。
+- [x] **T2.11 MekanismEx 独立附属模组（D7.11）**：见 §17。
 - [x] **T2.13 色调归一化与名称翻译**：`TankGasRenderer.normalizeTint` 修正过暗/纯白化学品色调
       （见 §7.2 第 6 条）；`Gas.nameKey` 复用 Mekanism 真实翻译键（见 §17.5）。
 - [ ] **T2.12 气体容器手动右键交互**：待补（依赖各气体模组的容器物品）。
 
 ---
 
-## 17. Mekanism 软依赖适配器（D7.11，v1.1 新增）
+## 17. MekanismEx 独立附属模组（D7.11，v1.1 新增）
 
 ### 17.1 目标
 
 让**气体端口**能直接连接 Mekanism 的**加压管道（Pressurized Tube）**，并让**全部 Mekanism
 化学品**（气体、浆液、灌注物、颜料，含**核材料、放射性气体**）都能存进气体储罐。
-**软依赖**：整合包不装 Mekanism 时，本模组照常运行，气体端口仍暴露本模组自建的气体能力。
+Core 不依赖 Mekanism，未安装扩展时仍保留自建的气体能力。`StardustIndustry-MekanismEx`
+同时硬依赖 Core 与 Mekanism；选择安装该扩展时必须提供这两个前置。
 
 ### 17.2 Mekanism 1.21.1 的现实
 
@@ -656,7 +654,7 @@ Mekanism 1.21.1 **已无独立的「气体」类型**：气体、浆液、灌注
 
 ### 17.3 实现
 
-新建 `compat/mekanism/` 包（只在 Mekanism 加载时实例化）：
+实现位于 `StardustIndustry-MekanismEx/src/main/java/com/stardustindustry/mekanismex/`：
 
 | 类 | 职责 |
 |---|---|
@@ -668,8 +666,8 @@ Mekanism 1.21.1 **已无独立的「气体」类型**：气体、浆液、灌注
   `stardustindustry:hydrogen` 是两种气体——否则会静默吞掉一个外部 ID。
 - **全量注册 + 惰性兑底**：注册表冻结后一次性把全部化学品（实测 **65** 种）注册进 `GasRegistry`；
   `MekanismGasBridge.gasForId` 另留惰性解析，覆盖数据包/附属模组后加的化学品。
-- **加载期安全**：`ModCapabilities` 与 `commonSetup` 用 `ModList.get().isLoaded("mekanism")`
-  **先判后调**，不装 Mek 时永不链接任何 Mek 类型。
+- **加载期安全**：Core 不引用任何 Mekanism 类型；扩展由模组元数据声明 Mekanism 硬依赖，
+  前置缺失时由 NeoForge 在加载扩展类之前给出明确的依赖错误。
 
 ### 17.4 只有端口能连（流体与气体一致）
 
@@ -767,4 +765,3 @@ Mekanism 1.21.1 **已无独立的「气体」类型**：气体、浆液、灌注
 - `footprint == null` → 恒放行（"无限制"契约）。
 
 > 记忆：**流体看液面、气体看浓度，多方块看区块——区块不齐就冻结。**
-

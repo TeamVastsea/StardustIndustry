@@ -1,12 +1,15 @@
-# 星砾工业 · 多方块框架设计文档（v2.2）
+# 星砾工业 · 多方块框架设计文档（v2.3）
 
 > 状态：**设计稿（大部分已锁定，待少量批复）**
 > v2 变更：由"全动态"修正为 **静态机器为主 + 动态机器为辅** 的双轨制。
 > v2.1 变更：吸收第二轮批复——**电压等级体系**（LV/MV/HV/EHV，合成表区分、不绑定材质）、**基座槽不得为空**、**端口仅在基座层**、**安装工具兼拆除 + 参数 GUI + 拆解返还**（未产出则输入全额返还）、**控制端口 = 3×3 九格输入/输出面板（带过滤）**、**加成无边际递减**、**成型只替换上方主体、底座保留**。
 > v2.2 变更：**储罐分介质**（流体储罐 / 气体储罐，结构同源、仅介质不同）与**部件命名正式化**（`fluid_tank_shell` / `gas_tank_shell` / `industrial_glass` / `lv_gas_port` 等）；新增**通用气体抽象**（`Gas` / `GasStack` / `IGasHandler` / `GasRegistry` + `GasBufferModule`）；**气体渲染按浓度**（非液面）。详见 §15。
+> v2.3 变更：代码迁入 `StardustIndustry-Core`，JEI/HUD 与 Mekanism 对接分别迁入 UtilsEx、
+> MekanismEx；§9 更新为当前真实目录，模块规则以 `module-architecture.md` 为准。
 > 关联代码：`com.stardustindustry.stardustindustry.multiblock` / `.machine` / `.gas`
 > **本文档是框架主文档**：双轨制、等级、加成、结构求值、投影、参数 GUI 等**通用机制**以本文为准；
 > 储罐（流体/气体共用）的专项设计见 [`tank-multiblock-design.md`](./tank-multiblock-design.md)。
+> 工程模块、依赖方向和发布边界见 [`module-architecture.md`](./module-architecture.md)。
 
 ---
 
@@ -576,85 +579,45 @@ public record ScanFailure(BlockPos expectedPos, String expectation) {}
 
 ---
 
-## 9. 目录结构（v2）
+## 9. 当前代码目录
 
+完整的工程级目录和依赖规则见 [`module-architecture.md`](./module-architecture.md)。本框架的原创实现
+全部位于 Core；下列目录均相对于
+`StardustIndustry-Core/src/main/java/com/stardustindustry/stardustindustry/`：
+
+```text
+com.stardustindustry.stardustindustry/
+|-- StardustIndustry.java
+|-- StardustIndustryClient.java
+|-- Config.java
+|-- capability/                 通用资源类型
+|-- client/                     机器界面、整体渲染、液体/气体渲染
+|-- energy/                     EnergyTier
+|-- gas/                        自有 Gas/GasStack/IGasHandler/GasRegistry
+|-- machine/
+|   |-- crusher/                静态机器示例
+|   |-- module/                 能量、物品、配方、流体、气体模块
+|   |-- port/                   物品、流体、气体、能量端口 BE
+|   |-- tank/                   流体/气体储罐共用实现
+|   `-- tool/                   安装工具
+|-- multiblock/
+|   |-- model/                  StructureModel/StructureSlot
+|   |-- modifier/               FillerModifier/ModifierSet
+|   `-- provider/               静态、动态、储罐结构求值
+|-- network/                    客户端/服务端数据包
+|-- recipe/                     ProcessingRecipe
+`-- registry/                   方块、物品、菜单、能力等注册
 ```
-com.stardustindustry.stardustindustry
-├── StardustIndustry.java
-├── Config.java
-├── capability/           ResourceType, ResourceStack
-├── gas/                                     ← 新增（通用气体抽象，本模组自有）
-│   ├── Gas.java                             （气体类型：id + 色调）
-│   ├── GasStack.java                        （气体 + 量，单位 mB；NBT 往返）
-│   ├── IGasHandler.java                     （气体处理器接口，仿 IFluidHandler）
-│   └── GasRegistry.java                     （气体注册表；内置常见工业气体 + 兼容层注册）
-├── energy/               EnergyTier
-├── multiblock/                              ← 静态（保留 + 扩展）
-│   ├── PartRole.java                        （扩展：+BASE_SLOT）
-│   ├── StructureDefinition.java             （保留）
-│   ├── StructureModel.java                  ← 新增：结构+模型同源
-│   ├── StructurePart.java                   （保留）
-│   ├── StructureMatcher.java                （保留）
-│   ├── StructureProjector.java              （扩展：双轨投影）
-│   ├── StructureRotation.java               （保留）
-│   ├── TierMaterials.java                   ← 新增（方块 → EnergyTier 映射）
-│   ├── provider/                            ← 新增
-│   │   ├── StructureProvider.java           （接口）
-│   │   ├── StaticStructureProvider.java
-│   │   ├── DynamicStructureProvider.java
-│   │   ├── StructureEvaluation.java
-│   │   └── ScanFailure.java
-│   └── dynamic/                             ← 新增（仅动态机器用）
-│       ├── BoundingBoxScanner.java
-│       ├── MultiblockShape.java
-│       ├── ShellRoleMap.java
-│       └── ShellTags.java
-├── modifier/                                ← 新增（双轨共用）
-│   ├── ModifierSet.java
-│   ├── FillerRegistry.java
-│   └── FillerModifier.java
-├── signal/                                  ← 新增（控制端口逻辑层）
-│   ├── SignalChannel.java                   （一个输入/输出通道）
-│   ├── SignalCondition.java                 （触发条件枚举）
-│   └── SignalBus.java                       （绑定到机器状态/红石）
-├── machine/
-│   ├── MachineBlock.java                    （已改造 facing）
-│   ├── MachineBlockEntity.java              （接 StructureProvider）
-│   ├── MachineModule.java
-│   ├── ModuleHost.java
-│   ├── MachineTier.java
-│   ├── CasingBlock.java                     （外壳）
-│   ├── FrameBlock.java                      ← 新增
-│   ├── FillerBlock.java                     ← 新增
-│   ├── BaseBlock.java                       ← 新增（底座块，带等级）
-│   ├── InvisibleStructureBlock.java         ← 新增（成型后的隐形结构格）
-│   ├── MachinePortBlock.java
-│   ├── MachinePortBlockEntity.java
-│   ├── PlacedPart.java                      ← 新增（原始方块记录条目）
-│   ├── tool/InstallationToolItem.java       ← 新增（安装工具：右击安装 / Shift+右键参数GUI）
-│   ├── module/  （Energy / ItemInventory / RecipeRunner / FluidBuffer / **GasBuffer**）
-│   ├── port/    （Item / Fluid / **Gas** / Energy / Control）
-│   ├── tank/    ← 储罐（流体/气体同源）
-│   │   ├── TankMedium.java                  （FLUID / GAS：介质枚举，决定外壳块与文案）
-│   │   ├── AbstractTankBlockEntity.java     （共用：结构/锚点/容量/同步/参数/广播）
-│   │   ├── TankBlockEntity.java             （流体储罐控制器：FluidBufferModule）
-│   │   ├── GasTankBlockEntity.java          （气体储罐控制器：GasBufferModule）
-│   │   ├── TankShellBlock.java              （外壳块，按介质选自 BE 类型）
-│   │   ├── TankFrameBlock.java / TankGlassBlock.java （共用框架 / 工业玻璃）
-│   │   └── TankHudAccess.java               （任意格 → 储罐控制器）
-│   └── crusher/ （重写为静态示例）
-├── recipe/               ModRecipes, ProcessingRecipe, ProcessingRecipeInput
-├── compat/jei/           StardustJeiPlugin, CrushingCategory
-├── compat/cc/            ← 新增（CC:Tweaked 软依赖）
-│   └── ControlPortPeripheral.java           （把控制端口暴露为计算机外设）
-├── client/                                  ← 新增（客户端渲染）
-│   ├── MachineRenderer.java                 ← 控制器 BER：成型/投影模型 + 动画
-│   ├── StructureGhostRenderer.java          ← 幽灵方块投影渲染
-│   ├── MachineParamsScreen.java             ← 机器参数 GUI（Shift+右键）
-│   ├── ControlPortScreen.java               ← 控制端口通道配置 GUI
-│   └── ClientSetup.java                     ← 注册 BER
-└── registry/             ModRegistries, ModBlocks, ModItems, ModBlockEntities, ModCapabilities
+
+第三方接口不在以上包中：
+
+```text
+StardustIndustry-UtilsEx/.../utilsex/       JEI、Jade、WTHIT、TOP
+StardustIndustry-MekanismEx/.../mekanismex/ Mekanism chemical/气体端口桥接
+StardustIndustry-AE2Ex/.../ae2ex/           AE2 扩展入口（当前为骨架）
 ```
+
+`signal/`、CC:Tweaked 等仍属于规划内容；未实现前不得放进当前目录树或描述为已完成。
 
 ---
 
@@ -722,7 +685,7 @@ com.stardustindustry.stardustindustry
 | **D7.8** | **占位美术资源手册**：逐张标明每张贴图对应方块，供美术替换 | 美术可接手 | ✅ 已完成（见 [`textures-placeholder-manual.md`](./textures-placeholder-manual.md)） |
 | **D7.9** | **储罐部件命名正式化**：`tank_shell`→`fluid_tank_shell`、`tank_glass`→`industrial_glass`；注册 ID / 常量 / 语言键 / 模型 / 配方 / 贴图 / 文档同步 | 命名一次到位 | ✅ 已完成（不向后兼容，开发阶段） |
 | **D7.10** | **储罐分介质 + 通用气体抽象**：`Gas`/`GasStack`/`IGasHandler`/`GasRegistry` + `GasBufferModule`；`TankMedium` 抽公共基类；`gas_tank_shell` / `lv_gas_port`；气体能力注册；气体**浓度**渲染 | 气体储罐可实机使用 | 🔄 进行中（见 §15） |
-| **D7.11** | **Mekanism 软依赖适配器**：把 Mekanism 全部化学品（含核材料/放射性气体）映射为本模组 `Gas`；气体端口对接 Mek 加压管道；外壳不对外 | 与 Mekanism 互通 | ✅ 已完成（见 [`tank-multiblock-design.md`](./tank-multiblock-design.md) §17；实测注册 65 种化学品） |
+| **D7.11** | **MekanismEx 独立附属模组**：把 Mekanism 全部化学品（含核材料/放射性气体）映射为 Core 的 `Gas`；气体端口对接 Mek 加压管道；外壳不对外 | 与 Mekanism 互通且不污染 Core 依赖 | ✅ 已完成（见 [`tank-multiblock-design.md`](./tank-multiblock-design.md) §17；实测注册 65 种化学品） |
 | **D8** | `signal/` 控制端口逻辑 + `ControlPortScreen` + `compat/cc` | 逻辑接口可用 | ⬜ |
 | **D9** | 重写破碎机为静态示例；数值调优 | 可玩 | ⬜ |
 
@@ -917,7 +880,7 @@ com.stardustindustry.stardustindustry
 >    `gradle.properties` 全局开启 `org.gradle.configuration-cache=true`，
 >    而 NeoForge 的 `BootstrapLauncher.main()` 在**执行期**调用 `Task.project` 并注册 `Gradle.addListener`，
 >    二者都是配置缓存明令禁止的，导致 `runClient`/`runServer`/IDE 启动一律 `BUILD FAILED`。
->    **修复**：`build.gradle` 中对 `run*` 与 `BootstrapLauncher` 任务调用
+>    **修复**：`build.gradle.kts` 中对 `run*` 与 `BootstrapLauncher` 任务调用
 >    `notCompatibleWithConfigurationCache(...)`，只对这几个任务关闭缓存，其余任务仍享受缓存加速。
 
 > **成型重绘为何胜过另做模型**：设计文档要求「模型与原方块布局对齐」，而重绘玩家摆放的原始方块，
@@ -980,11 +943,13 @@ com.stardustindustry.stardustindustry
 > **D6 锚点规则修订**：原设计「控制器在壳外侧，扫描器从控制器朝六向找壳」在**密闭矩形**下不成立
 > （切向会立刻撞到同面墙块）。本轮回退为用户确认的「控制器是壳面上的一格」语义。§5.1 的措辞随之统一。
 
-> **版本与发布**：本轮起版本号降为 **`0.1.0`**（早期测试语义）。产物 `stardustindustry-0.1.0.jar`
-> 已同步到 `K:\Minecraft MODS\dist\`（分发）与客户端实例
-> `...\.minecraft\versions\1.21.1-NeoForge\mods\`（测试）。三处 SHA-256 一致。
+> **版本与发布**：本轮起版本号降为 **`0.1.0`**（早期测试语义）。当前多模块构建会生成
+> `stardustindustry-core-0.1.0.jar`、`stardustindustry-utilsex-0.1.0.jar`、
+> `stardustindustry-mekanismex-0.1.0.jar` 与 `stardustindustry-ae2ex-0.1.0.jar`，统一从根
+> `build/libs/` 发布。安装组合见 [`module-architecture.md`](./module-architecture.md)。
 >
-> **构建踩坑**：`clean` 会删除 `buildDir`（重定向到 `%TEMP%\stardustindustry-build`），
+> **构建踩坑**：`clean` 会删除各模块 `buildDir`（重定向到系统临时目录下的
+> `stardustindustry-build/<模块名>`），
 > 连带删掉 NeoForm 缓存；若 Gradle 构建缓存（`org.gradle.caching=true`）里存了**残缺的
 > `neoFormDecompile` 产物**，重新解压出的反编译源码会缺包（如 `net.minecraft.advancements`），
 > 导致 `neoFormRecompile` 报「找不到符号/程序包不存在」。**解法**：`--no-build-cache --rerun-tasks`
@@ -1025,7 +990,7 @@ com.stardustindustry.stardustindustry
 ## 14. 当前进度与下一步
 
 D0.5 ~ D7.10 见 §12 的阶段表（D7.10 气体储罐进行中，见 §15）。
-**下一步**：完成 D7.10 的气体储罐实机闭环 → 进入 **D7.11 Mekanism 软依赖适配器**
+**下一步**：完成 D7.10 的气体储罐实机闭环 → 进入 **D7.11 MekanismEx 独立附属模组**
 （把全部化学品映射为 `Gas`）→ 再回到 **D8 控制端口逻辑层**。
 每阶段 `compileJava` + `runServer` 验证 0 错误。
 
@@ -1038,18 +1003,19 @@ D0.5 ~ D7.10 见 §12 的阶段表（D7.10 气体储罐进行中，见 §15）�
 原版没有"气体"这种资源，唯一通用来源是 Mekanism 的化学品（chemical）。若把 Mekanism
 当作硬前置，则本模组的所有机器都被一个外部模组绑架；而若完全不做，储罐就永远只有液体。
 
-因此本模组**自建一层最小的气体抽象**，把 Mekanism 当作**软依赖**适配进来：
+因此 Core **自建一层最小的气体抽象**，再由独立的 MekanismEx 模块完成适配；
+Core 不依赖 Mekanism，而 MekanismEx 自身把 Mekanism 声明为硬依赖：
 
 | 层 | 内容 | 说明 |
 |---|---|---|
 | 核心抽象 | `Gas` / `GasStack` / `IGasHandler` / `GasRegistry` | 本模组自有，**不依赖任何外部模组**；单位 **mB**（与流体一致） |
 | 缓冲模块 | `GasBufferModule` | 机器/储罐里的气体缓存，暴露 `IGasHandler` 能力 |
-| 能力注册 | `ModCapabilityTypes.GAS_HANDLER`（`BlockCapability<IGasHandler, Void>`） | 气体端口与气体储罐外壳对外暴露 |
-| 兼容层（D7.11 ✅） | `compat/mekanism` | 把 Mekanism 全部化学品映射为 `Gas`；Mekanism 不在时本模组照常运行 |
+| 能力注册 | `ModCapabilityTypes.GAS_HANDLER`（`BlockCapability<IGasHandler, Void>`） | 仅气体端口对外暴露 |
+| 兼容层（D7.11 ✅） | `StardustIndustry-MekanismEx` | 把 Mekanism 全部化学品映射为 `Gas`；Core 不依赖 Mekanism，安装扩展时 Mekanism 为硬依赖 |
 
-> **设计原则**：一个整合包**没有 Mekanism 也能跑**——`GasRegistry` 内置一组常见工业气体
-> （氢/氧/氮/二氧化碳/蒸汽/天然气）作为占位；装了 Mekanism 则其**全部**化学品（含**核材料、
-> 放射性气体**）经适配器进入 `GasRegistry`，可直接存进气罐、走气管。
+> **设计原则**：Core **没有 Mekanism 也能跑**——`GasRegistry` 内置一组常见工业气体
+> （氢/氧/氮/二氧化碳/蒸汽/天然气）作为占位；同时安装 Mekanism 与 MekanismEx 后，其**全部**
+> 化学品（含**核材料、放射性气体**）经适配器进入 `GasRegistry`，可直接存进气罐、走气管。
 
 ### 15.2 气体与流体：同结构、异介质、异渲染
 
@@ -1077,7 +1043,8 @@ D0.5 ~ D7.10 见 §12 的阶段表（D7.10 气体储罐进行中，见 §15）�
   为 `PORT_GAS`（新增），能力注册指向气体缓冲。
 - 速率：流体端口为 LV/MV/HV/EHV = **5 / 20 / 80 / 320 B/t**；气体端口沿用同一速率表
   （同一 `EnergyTier.fluidTransfer()`）。
-- 手动交互（手持容器右键端口）本阶段先只做**流体**；气体容器的右键交互在兼容层就绪后补（D7.11）。
+- 手动交互（手持容器右键端口）当前只实现**流体**；气体容器右键交互仍是独立后续任务，
+  不属于已完成的 D7.11 chemical 管道桥接。
 
 ### 15.4 储罐参数屏（两种介质共用布局）
 

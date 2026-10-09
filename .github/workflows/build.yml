@@ -26,10 +26,9 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
 
-      # The highlight-tooltip mod jars under libs/ are gitignored (third-party
-      # binaries), so a fresh CI checkout does not have them and the compile
-      # dependencies would not resolve. Fetch them the same way a developer does.
-      - name: Fetch highlight-tooltip libs
+      # Third-party extension jars under libs/ are gitignored, so a fresh CI
+      # checkout fetches the same compile dependencies as a developer machine.
+      - name: Fetch extension dependencies
         run: bash scripts/fetch-hud-libs.sh
 
       - name: Build with Gradle
