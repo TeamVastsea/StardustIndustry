@@ -57,7 +57,7 @@ public final class GasBufferModule implements MachineModule, ModuleHost.Resource
 
     public GasBufferModule(EnergyTier tier) {
         this.tier = tier;
-        this.baseCapacity = Math.max(1000, tier.voltage() * 1000);
+        this.baseCapacity = Math.max(1000, tier.powerClass() * 1000);
         this.transferLimit = tier.maxTransfer();
     }
 

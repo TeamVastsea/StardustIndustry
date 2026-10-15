@@ -93,10 +93,10 @@
   "gas.stardustindustry.steam": "Steam",
   "gas.stardustindustry.natural_gas": "Natural Gas",
 
-  "tier.stardustindustry.lv": "LV",
-  "tier.stardustindustry.mv": "MV",
-  "tier.stardustindustry.hv": "HV",
-  "tier.stardustindustry.ehv": "EHV",
+  "tier.stardustindustry.lv": "LV · 380 V",
+  "tier.stardustindustry.mv": "MV · 10 kV",
+  "tier.stardustindustry.hv": "HV · 110 kV",
+  "tier.stardustindustry.ehv": "EHV · 500 kV",
 
   "stardustindustry.configuration.title": "Stardust Industry Configs",
   "stardustindustry.configuration.section.stardustindustry.common.toml": "Stardust Industry Configs",

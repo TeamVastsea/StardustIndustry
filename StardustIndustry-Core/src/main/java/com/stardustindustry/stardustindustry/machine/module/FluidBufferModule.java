@@ -65,7 +65,7 @@ public final class FluidBufferModule implements MachineModule, ModuleHost.Resour
 
     public FluidBufferModule(EnergyTier tier) {
         this.tier = tier;
-        this.baseCapacity = Math.max(1000, tier.voltage() * 1000);
+        this.baseCapacity = Math.max(1000, tier.powerClass() * 1000);
         // A tiered machine's transfer is fixed by its tier.
         this.transferLimit = tier.maxTransfer();
         this.tank = newTank(this.baseCapacity);

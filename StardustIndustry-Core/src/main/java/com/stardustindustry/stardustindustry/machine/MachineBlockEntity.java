@@ -210,9 +210,10 @@ public abstract class MachineBlockEntity extends BlockEntity {
 
     /** The per-tick idle draw in FE before filler effects. */
     protected int idleDraw() {
-        // Charged at the machine tier's voltage: small, but enough that a machine
-        // with no power line visibly stalls rather than running forever for free.
-        return tier.energyTier().voltage();
+        // Charged at the machine tier's power class: small, but enough that a
+        // machine with no power line visibly stalls rather than running forever
+        // for free. (The physical line voltage is tier.energyTier().volts().)
+        return tier.energyTier().powerClass();
     }
 
     /** True when the machine currently has enough energy to run. */

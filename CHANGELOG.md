@@ -67,6 +67,14 @@
   直接复用 Mekanism 自带语言文件，显示为「红石 / Redstone」等真实名称；无 `nameKey` 时回退到自建键。
 
 ### 变更
+- **电力系统 E1：`EnergyTier` 概念分离（电压 vs 功率档）**：把原先单一的 `voltage` 拆成两个概念。
+  - `volts()`：**物理线电压**（380 V / 10 kV / 110 kV / 500 kV），用于绝缘/过压判定与显示；
+  - `powerClass()`：**FE/t 功率档**，沿用旧值（32 / 128 / 512 / 2048），即原 `voltage` 的语义；
+  - `maxTransfer() = powerClass × maxAmperage`，**数值未变、现有平衡不变**；
+  - `accepts(incoming)` 改为按 `volts()` 判定；`maxAmperage()` 视为真载流量。
+  - 调用点同步：`MachineBlockEntity.idleDraw()`、`FluidBufferModule`、`GasBufferModule` 改用 `powerClass()`。
+  - 等级显示改为「**等级 + 电压**」并存：`tier.stardustindustry.*` 语言键改为 `LV · 380 V`
+    （`MV · 10 kV` / `HV · 110 kV` / `EHV · 500 kV`）。
 - **工程改为 Gradle Kotlin DSL 多项目构建**：根业务 `src/` 拆为 Core、UtilsEx、MekanismEx、
   AE2Ex 四个独立模块；每个模块拥有自己的 `src`、`@Mod` 入口、元数据和 JAR。根 `build` 汇总
   四个产物，根 `runClient` 只启动一个 Core 客户端并自动装入三个扩展 JAR。

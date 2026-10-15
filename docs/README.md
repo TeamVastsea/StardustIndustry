@@ -11,6 +11,7 @@
 | 搭建环境、构建、运行和排错 | [`dev-environment.md`](./dev-environment.md) |
 | 理解多方块通用框架 | [`multiblock-design.md`](./multiblock-design.md) |
 | 理解流体/气体储罐 | [`tank-multiblock-design.md`](./tank-multiblock-design.md) |
+| 设计电压/电流/功率/线损电力系统 | [`electric-power-system-design.md`](./electric-power-system-design.md) |
 | 查询统一术语和注册 ID | [`terminology.md`](./terminology.md) |
 | 替换占位贴图 | [`textures-placeholder-manual.md`](./textures-placeholder-manual.md) |
 | 评估未来连接材质扩展 | [`connected-textures-plan.md`](./connected-textures-plan.md) |
@@ -24,7 +25,10 @@
 2. 本地命令、运行目录和测试方法：`dev-environment.md`。
 3. 储罐细节：`tank-multiblock-design.md`。
 4. 通用多方块机制：`multiblock-design.md`。
-5. 名称、翻译和注册 ID：`terminology.md`。
+5. 电力系统（电压/电流/功率/线损）：`electric-power-system-design.md`。
+   该文档批复后，`multiblock-design.md` §4.5 的等级表与 `energy/EnergyTier`
+   以其为准同步。
+6. 名称、翻译和注册 ID：`terminology.md`。
 
 设计文档中的“规划”“后续”和未勾选条目不代表当前代码已经实现。当前模块状态及已验证范围
 以 `module-architecture.md` 和 `dev-environment.md` 为准。
