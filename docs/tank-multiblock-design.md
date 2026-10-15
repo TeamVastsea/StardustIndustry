@@ -308,6 +308,11 @@ n = 3 … 9       （每轴；默认上限 9，见配置）
   已安装端口：LV流体端口 x1      ← 每等级一项，多等级依次列出；无端口显示「无」
   最大传输速率：LV 5B/t         ← 取最高等级端口，速率 = 该等级 mB/t ÷1000
   ```
+- **参数屏的数据来源（`TankParams`）**：尺寸、**存量与容量**、内容名、端口与速率全部放在
+  介质中性的 `MachineParamsData.TankParams` 里，由 `AbstractTankBlockEntity` 统一填写：
+  存量取 `storedAmountMb()`、容量取 `currentCapacityMb()`。**不复用通用字段
+  `fluidAmount`/`fluidCapacity`**——那两个来自 `FluidBufferModule`，气体储罐没有该模块，
+  复用它会让气体储罐的参数屏显示 `0B`（曾出现的 bug）。此设计保证流体/气体走同一条数据路径。
 - **未成型时的错误反馈**：
   - 控制器（锚点）旁的投影幽灵块标出缺失位置；
   - 浮动文字给出**第一条**失败原因；

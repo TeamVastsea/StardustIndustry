@@ -72,10 +72,19 @@ public record MachineParamsData(
      * lets the screen resolve the current language, and the English name beside
      * it, itself.</p>
      *
+     * <p>The amount and capacity are carried here, in mB, rather than read from
+     * the generic {@code fluidAmount}/{@code fluidCapacity} fields: those come
+     * from a {@code FluidBufferModule}, which a gas tank does not have, so a gas
+     * tank would otherwise report zero. Keeping the vessel's own numbers in its
+     * own block makes the screen medium-agnostic — a fluid tank and a gas tank
+     * fill the same fields from their own buffer.</p>
+     *
      * @param structureName  translation key suffix for the structure kind, e.g. {@code "tank"}
      * @param sizeX          size along X, or {@code 0} while unformed
      * @param sizeY          size along Y, or {@code 0} while unformed
      * @param sizeZ          size along Z, or {@code 0} while unformed
+     * @param storedMb       the amount held, in mB, or {@code 0} while unformed
+     * @param capacityMb     the vessel's capacity, in mB, or {@code 0} while unformed
      * @param fluidKey       the held fluid's translation key, or {@code ""} when empty
      * @param fluidNameEn    the held fluid's English name, or {@code ""} when empty
      * @param ports          installed ports as {@code "tier:count"} pairs, e.g. {@code "lv:1,mv:2"}
@@ -87,6 +96,8 @@ public record MachineParamsData(
             int sizeX,
             int sizeY,
             int sizeZ,
+            int storedMb,
+            int capacityMb,
             String fluidKey,
             String fluidNameEn,
             String ports,
@@ -100,6 +111,8 @@ public record MachineParamsData(
                             ByteBufCodecs.VAR_INT.encode(buffer, params.sizeX());
                             ByteBufCodecs.VAR_INT.encode(buffer, params.sizeY());
                             ByteBufCodecs.VAR_INT.encode(buffer, params.sizeZ());
+                            ByteBufCodecs.VAR_INT.encode(buffer, params.storedMb());
+                            ByteBufCodecs.VAR_INT.encode(buffer, params.capacityMb());
                             ByteBufCodecs.STRING_UTF8.encode(buffer, params.fluidKey());
                             ByteBufCodecs.STRING_UTF8.encode(buffer, params.fluidNameEn());
                             ByteBufCodecs.STRING_UTF8.encode(buffer, params.ports());
@@ -108,6 +121,8 @@ public record MachineParamsData(
                         },
                         buffer -> new TankParams(
                                 ByteBufCodecs.STRING_UTF8.decode(buffer),
+                                ByteBufCodecs.VAR_INT.decode(buffer),
+                                ByteBufCodecs.VAR_INT.decode(buffer),
                                 ByteBufCodecs.VAR_INT.decode(buffer),
                                 ByteBufCodecs.VAR_INT.decode(buffer),
                                 ByteBufCodecs.VAR_INT.decode(buffer),

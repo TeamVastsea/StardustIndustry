@@ -30,6 +30,13 @@
   当前没有 AE2 业务实现。
 
 ### 修复
+- **气体储罐参数屏容量/存量显示为 0B**：参数屏的「储罐容积 / 已存储容量 / 剩余容量」此前从
+  **通用字段 `fluidAmount`/`fluidCapacity`** 取数，而这两个字段来自 `FluidBufferModule`——
+  气体储罐没有流体模块，取到 `-1` 后除以 1000 得 `0B`（满罐也显示 0B；流体储罐因有流体模块而正常）。
+  修复：把介质中性的**存量与容量（mB）**加入 `MachineParamsData.TankParams`
+  （新增 `storedMb`/`capacityMb` 字段与 `StreamCodec` 编解码），由 `AbstractTankBlockEntity`
+  统一填写（存量 = `storedAmountMb()`、容量 = `currentCapacityMb()`），参数屏改读这两项。
+  流体与气体由此走同一条数据路径；TOP/Jade/WTHIT 的 HUD 本就直读方块实体，不受影响。
 - **跨区块多方块在区块卸载时误判解体（严重）**：多方块可横跨多个区块，而
   `Level.getBlockState` 对**未加载区块返回空气**。此前储罐每 20 tick 重扫整个包围盒，一旦
   储罐另一部分所在区块卸载（玩家走到视距边缘、或多人服务器里他人活动），未加载部分被当成

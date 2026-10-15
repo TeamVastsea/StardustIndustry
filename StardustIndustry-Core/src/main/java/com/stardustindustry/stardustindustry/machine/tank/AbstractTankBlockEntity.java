@@ -238,6 +238,7 @@ public abstract class AbstractTankBlockEntity extends MachineBlockEntity {
         }
 
         return new MachineParamsData.TankParams(medium().id(), sizeX, sizeY, sizeZ,
+                storedAmountMb(), currentCapacityMb(),
                 contentsKey, contentsNameEn, ports.toString(), maxRateTier, maxRate);
     }
 
