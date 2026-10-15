@@ -304,6 +304,11 @@ List<PlacedPart> placedParts;   // { offset, originalState, role, fillerKind, po
 - 快照对"有专属讲法的机器"附带一个额外数据块（当前是
   `MachineParamsData.TankParams`），普通机器为 `null`，界面自动回落到
   通用字段布局。这样一套快照类型即可承载两种界面，无需为每种机器新增类型。
+- **专属数据块必须自带完整的、介质中性的数值**，不能借用通用字段的语义。
+  例：储罐的容量与存量放进 `TankParams`（`storedMb`/`capacityMb`），而**不**读通用的
+  `fluidAmount`/`fluidCapacity`——后者由 `FluidBufferModule` 填充，气体储罐没有该模块，
+  借用会得到 `-1` 并被界面显示成 `0B`。介质不同但字段语义相同时，一律由共用基类
+  （储罐为 `AbstractTankBlockEntity`）在快照里填好，界面只负责排版。
 
 ---
 

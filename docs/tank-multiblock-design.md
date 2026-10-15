@@ -547,6 +547,11 @@ public record TankHudData(
       玻璃时跳过该面，整面玻璃从两侧看都是一整块。
 - [x] **T1.22 删除无等级端口**：移除 `item_port`/`fluid_port`/`energy_port` 及其资源，
       端口一律带等级前缀（当前仅 LV，MV/HV/EHV 按同模式扩展）。
+- [x] **T1.27 参数屏容量/存量取数修复**：储罐版式的「储罐容积 / 已存储容量 / 剩余容量」
+      曾从通用字段 `fluidAmount`/`fluidCapacity` 取数，而那两个字段由 `FluidBufferModule`
+      填充——气体储罐没有流体模块，取到 `-1` 后除以 1000 得 `0B`（满罐也显示 0B）。
+      修复：`MachineParamsData.TankParams` 新增介质中性的 `storedMb`/`capacityMb`（含 `StreamCodec`），
+      由 `AbstractTankBlockEntity` 统一填写，参数屏改读这两项（详见 §9）。
 - [ ] **T1.15 美术资源替换**：按 `docs/textures-placeholder-manual.md` 替换全部占位贴图。
 
 ---
