@@ -14,6 +14,7 @@
 | 设计电压/电流/功率/线损电力系统 | [`electric-power-system-design.md`](./electric-power-system-design.md) |
 | 查询统一术语和注册 ID | [`terminology.md`](./terminology.md) |
 | 替换占位贴图 | [`textures-placeholder-manual.md`](./textures-placeholder-manual.md) |
+| 制作/替换 OBJ 模型与摆放配置 | [`obj-model-manual.md`](./obj-model-manual.md) |
 | 评估未来连接材质扩展 | [`connected-textures-plan.md`](./connected-textures-plan.md) |
 | 查询版本变化 | [`../CHANGELOG.md`](../CHANGELOG.md) |
 

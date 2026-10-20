@@ -1,0 +1,7 @@
+newmtl body
+Kd 1 1 1
+map_Kd stardustindustry:block/terminal_hv_body
+
+newmtl metal
+Kd 1 1 1
+map_Kd stardustindustry:block/terminal_hv_metal

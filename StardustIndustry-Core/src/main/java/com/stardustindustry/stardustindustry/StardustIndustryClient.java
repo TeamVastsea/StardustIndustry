@@ -48,6 +48,18 @@ public class StardustIndustryClient {
      * overlay for free by being registered here.</p>
      */
     @SubscribeEvent
+    static void onRegisterClientReloadListeners(net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent event) {
+        // Terminal posts are OBJ models baked once per tier; a re-exported OBJ or
+        // a texture change only shows up after the cache is dropped.
+        event.registerReloadListener(
+                (net.minecraft.server.packs.resources.ResourceManagerReloadListener) resourceManager ->
+                        com.stardustindustry.stardustindustry.client.TerminalMountRenderer.clearCache());
+        // The pose (offset / rotation / scale) of each terminal OBJ lives in
+        // models/terminal/<tier>.json so the artist can iterate without a rebuild.
+        event.registerReloadListener(new com.stardustindustry.stardustindustry.client.TerminalModelConfigs());
+    }
+
+    @SubscribeEvent
     static void onRegisterRenderers(net.neoforged.neoforge.client.event.EntityRenderersEvent.RegisterRenderers event) {
         net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider<com.stardustindustry.stardustindustry.machine.MachineBlockEntity> provider =
                 com.stardustindustry.stardustindustry.client.MachineRenderer::new;
@@ -57,5 +69,12 @@ public class StardustIndustryClient {
                 com.stardustindustry.stardustindustry.registry.ModBlockEntities.FLUID_TANK_SHELL.get(), provider);
         event.registerBlockEntityRenderer(
                 com.stardustindustry.stardustindustry.registry.ModBlockEntities.GAS_TANK_SHELL.get(), provider);
+
+        // Terminal mounts: the plate model draws the empty rack, and this
+        // renderer draws a copper post on every occupied cell. Occupancy cannot
+        // be a blockstate (2^16 patterns for a 4x4 rack), so it needs a renderer.
+        event.registerBlockEntityRenderer(
+                com.stardustindustry.stardustindustry.registry.ModBlockEntities.TERMINAL_MOUNT.get(),
+                com.stardustindustry.stardustindustry.client.TerminalMountRenderer::new);
     }
 }

@@ -120,6 +120,25 @@ public final class ModBlocks {
 
     /** LV frame removed with the old demo tank; the real tank frame is tierless. */
 
+    // ---- cables ----
+    //
+    // A terminal is two pieces: a mount (the rack, one block per tier) and
+    // terminals (the individual pins bolted onto its grid). See
+    // docs/electric-power-system-design.md §6.3.
+
+    /** The LV terminal mount: a 4 x 4 rack of 16 terminals. */
+    public static final DeferredBlock<com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlock> LV_TERMINAL_MOUNT =
+            terminalMount("lv_terminal_mount", com.stardustindustry.stardustindustry.energy.EnergyTier.LV);
+    /** The MV terminal mount: a 2 x 2 rack of 4 terminals. */
+    public static final DeferredBlock<com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlock> MV_TERMINAL_MOUNT =
+            terminalMount("mv_terminal_mount", com.stardustindustry.stardustindustry.energy.EnergyTier.MV);
+    /** The HV terminal mount: a single 110 kV insulator. */
+    public static final DeferredBlock<com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlock> HV_TERMINAL_MOUNT =
+            terminalMount("hv_terminal_mount", com.stardustindustry.stardustindustry.energy.EnergyTier.HV);
+    /** The EHV terminal mount: a single 500 kV insulator. */
+    public static final DeferredBlock<com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlock> EHV_TERMINAL_MOUNT =
+            terminalMount("ehv_terminal_mount", com.stardustindustry.stardustindustry.energy.EnergyTier.EHV);
+
     // ---- tank ----
     //
     // A tank is a tierless vessel: twelve frame edges, and faces of shell or
@@ -217,7 +236,38 @@ public final class ModBlocks {
     public static final DeferredItem<BlockItem> INDUSTRIAL_GLASS_ITEM =
             ModRegistries.ITEMS.registerSimpleBlockItem("industrial_glass", INDUSTRIAL_GLASS);
 
+    /**
+     * The terminal mounts, one per tier. Each is a distinct block because the
+     * grid density is a property of the voltage level.
+     */
+    public static final DeferredItem<BlockItem> LV_TERMINAL_MOUNT_ITEM =
+            ModRegistries.ITEMS.registerSimpleBlockItem("lv_terminal_mount", LV_TERMINAL_MOUNT);
+    public static final DeferredItem<BlockItem> MV_TERMINAL_MOUNT_ITEM =
+            ModRegistries.ITEMS.registerSimpleBlockItem("mv_terminal_mount", MV_TERMINAL_MOUNT);
+    public static final DeferredItem<BlockItem> HV_TERMINAL_MOUNT_ITEM =
+            ModRegistries.ITEMS.registerSimpleBlockItem("hv_terminal_mount", HV_TERMINAL_MOUNT);
+    public static final DeferredItem<BlockItem> EHV_TERMINAL_MOUNT_ITEM =
+            ModRegistries.ITEMS.registerSimpleBlockItem("ehv_terminal_mount", EHV_TERMINAL_MOUNT);
+
     private ModBlocks() {}
+
+    /** A terminal mount of one tier; the grid comes from the tier, not the block. */
+    private static DeferredBlock<com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlock> terminalMount(
+            String name, com.stardustindustry.stardustindustry.energy.EnergyTier tier) {
+        return ModRegistries.BLOCKS.register(name,
+                () -> new com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlock(
+                        terminalProperties(), tier));
+    }
+
+    /** Terminal racks are light fittings: a stone pickaxe is enough to recover one. */
+    private static BlockBehaviour.Properties terminalProperties() {
+        return BlockBehaviour.Properties.of()
+                .mapColor(MapColor.METAL)
+                .strength(1.5f, 6.0f)
+                .sound(SoundType.METAL)
+                .requiresCorrectToolForDrops()
+                .noOcclusion();
+    }
 
     /** Ports share their look and hardness; only their role differs. */
     private static BlockBehaviour.Properties portProperties() {
@@ -299,6 +349,14 @@ public final class ModBlocks {
         TierMaterials.register(LV_FLUID_PORT.get(), com.stardustindustry.stardustindustry.energy.EnergyTier.LV);
         TierMaterials.register(LV_GAS_PORT.get(), com.stardustindustry.stardustindustry.energy.EnergyTier.LV);
         TierMaterials.register(LV_ENERGY_PORT.get(), com.stardustindustry.stardustindustry.energy.EnergyTier.LV);
+
+        // Terminal mounts: not machine parts (they never form a multiblock), so
+        // they are deliberately absent from MachinePartTypes. Their tier is read
+        // from the block itself.
+        TierMaterials.register(LV_TERMINAL_MOUNT.get(), com.stardustindustry.stardustindustry.energy.EnergyTier.LV);
+        TierMaterials.register(MV_TERMINAL_MOUNT.get(), com.stardustindustry.stardustindustry.energy.EnergyTier.MV);
+        TierMaterials.register(HV_TERMINAL_MOUNT.get(), com.stardustindustry.stardustindustry.energy.EnergyTier.HV);
+        TierMaterials.register(EHV_TERMINAL_MOUNT.get(), com.stardustindustry.stardustindustry.energy.EnergyTier.EHV);
     }
 
     /** The block preserved for callers that only need the type. */

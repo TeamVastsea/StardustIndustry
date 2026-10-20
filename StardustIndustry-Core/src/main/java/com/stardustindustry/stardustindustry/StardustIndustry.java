@@ -105,6 +105,14 @@ public class StardustIndustry {
             event.accept(ModBlocks.FLUID_TANK_SHELL_ITEM);
             event.accept(ModBlocks.GAS_TANK_SHELL_ITEM);
             event.accept(ModBlocks.INDUSTRIAL_GLASS_ITEM);
+            event.accept(ModBlocks.LV_TERMINAL_MOUNT_ITEM);
+            event.accept(ModBlocks.MV_TERMINAL_MOUNT_ITEM);
+            event.accept(ModBlocks.HV_TERMINAL_MOUNT_ITEM);
+            event.accept(ModBlocks.EHV_TERMINAL_MOUNT_ITEM);
+            event.accept(ModItems.LV_TERMINAL);
+            event.accept(ModItems.MV_TERMINAL);
+            event.accept(ModItems.HV_TERMINAL);
+            event.accept(ModItems.EHV_TERMINAL);
             event.accept(ModItems.INSTALLATION_TOOL);
             event.accept(ModItems.CRUSHED_IRON);
         }

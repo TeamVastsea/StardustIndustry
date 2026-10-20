@@ -117,7 +117,15 @@ public enum EnergyTier implements StringRepresentable {
         return incoming.volts <= this.volts;
     }
 
+    /**
+     * Suffix of this tier's translation key, <b>without the {@code tier.} prefix</b>.
+     *
+     * <p>Callers wrap it themselves ({@code "tier." + tier.translationKey()}). The
+     * prefix used to be included here as well, which produced
+     * {@code tier.tier.stardustindustry.lv} and a raw missing-translation key
+     * in the terminal tooltip.</p>
+     */
     public String translationKey() {
-        return "tier." + com.stardustindustry.stardustindustry.StardustIndustry.MODID + "." + name;
+        return com.stardustindustry.stardustindustry.StardustIndustry.MODID + "." + name;
     }
 }

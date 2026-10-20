@@ -31,6 +31,24 @@
 | 气体储罐外壳 | `stardustindustry:gas_tank_shell` | Gas Tank Shell | 气体储罐外壳 |
 | LV 流体端口 | `stardustindustry:lv_fluid_port` | LV Fluid Port | LV 流体端口 |
 | LV 气体端口 | `stardustindustry:lv_gas_port` | LV Gas Port | LV 气体端口 |
+| 端子座 | `stardustindustry:<tier>_terminal_mount` | LV Terminal Mount (4x4) | LV 端子座（4×4） |
+| 端子 | `stardustindustry:<tier>_terminal` | LV Terminal | LV 端子 |
+
+> **端子座与端子是两个独立的东西，不要混称**：
+> **端子座**（Terminal Mount）是架在墙面/地面/天花板上、带网格的**方块**；
+> **端子**（Terminal）是插进格子里、成为**一个电气节点**的**物品**。
+> 说"装一个端子"指后者，说"放一个端子座"指前者。
+
+### 一之二·补、端子座网格容量
+
+| 等级 | 网格 | 每座格数 |
+|---|---|---|
+| LV | 4×4 | 16 |
+| MV | 2×2 | 4 |
+| HV | 1×1 | 1 |
+| EHV | 1×1 | 1 |
+
+> 等级越高端子本身越大，所以格子越稀。**每格是一个独立节点**。
 
 > **命名规则**：同一部件若因介质不同而分化，用 `<medium>_tank_<part>` 命名
 > （`fluid_tank_shell` / `gas_tank_shell`）；共用部件不带介质前缀

@@ -10,6 +10,7 @@ import com.stardustindustry.stardustindustry.multiblock.provider.ScanFailure;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
@@ -18,6 +19,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 
@@ -57,6 +59,12 @@ public class InstallationToolItem extends Item {
         // machine.
         MachineBlockEntity machine = resolveController(level, pos);
         if (machine == null) {
+            // Not a machine: the tool doubles as the cable-terminal wrench. A
+            // populated rack can be taken whole (Shift) and an empty one rotated,
+            // which is how the player chooses which face its grid is on.
+            if (handleTerminalMount(context)) {
+                return InteractionResult.SUCCESS;
+            }
             return InteractionResult.PASS;
         }
 
@@ -126,6 +134,99 @@ public class InstallationToolItem extends Item {
                             Component.translatable("screen.stardustindustry.machine_params")),
                     buffer -> com.stardustindustry.stardustindustry.machine.MachineParamsData.STREAM_CODEC
                             .encode(buffer, machine.paramsData()));
+        }
+    }
+
+    /**
+     * Handles the installation tool on a cable terminal mount.
+     *
+     * <p>Two gestures, and they are deliberately different hands of the same
+     * coin: <b>Shift</b> takes the rack <em>whole</em> — the block plus every
+     * terminal on it, straight into the player's inventory — while a plain click
+     * rotates the rack so its grid faces a different way. Taking the rack whole
+     * is what makes "move a wired-up panel" painless; a pickaxe instead scatters
+     * the rack and its terminals as separate drops.</p>
+     *
+     * @return true when the click was consumed
+     */
+    private static boolean handleTerminalMount(UseOnContext context) {
+        Level level = context.getLevel();
+        BlockPos pos = context.getClickedPos();
+        BlockState state = level.getBlockState(pos);
+        Player player = context.getPlayer();
+
+        if (!(state.getBlock() instanceof com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlock mount)) {
+            return false;
+        }
+        if (level.isClientSide()) {
+            return true;
+        }
+        if (!(level.getBlockEntity(pos) instanceof
+                com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlockEntity rack)) {
+            return false;
+        }
+
+        if (player != null && player.isShiftKeyDown()) {
+            takeWhole(level, pos, mount, rack, player);
+            return true;
+        }
+
+        // Plain click walks the grid to the next face: wall by wall, then the
+        // ceiling and the floor, so one gesture reaches all six orientations.
+        // The order is a fixed cycle rather than "rotate by the clicked face", so
+        // the player always knows what the next click does.
+        Direction facing = state.getValue(com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlock.FACING);
+        Direction next = nextFacing(facing);
+        level.setBlock(pos, state.setValue(
+                com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlock.FACING, next),
+                Block.UPDATE_ALL);
+        if (player != null) {
+            player.displayClientMessage(Component.translatable("message.stardustindustry.terminal.rotated")
+                    .withStyle(ChatFormatting.GRAY), true);
+        }
+        return true;
+    }
+
+    /**
+     * The next face in the rotation cycle: north, east, south, west, up, down.
+     *
+     * <p>Clockwise round the walls first, then the two faces the old
+     * wall-only rack could not reach. A plain {@code getClockWise(Y)} of
+     * {@code up}/{@code down} is a no-op, which would have left a floor or
+     * ceiling plate impossible to turn.</p>
+     */
+    private static Direction nextFacing(Direction facing) {
+        return switch (facing) {
+            case NORTH -> Direction.EAST;
+            case EAST -> Direction.SOUTH;
+            case SOUTH -> Direction.WEST;
+            case WEST -> Direction.UP;
+            case UP -> Direction.DOWN;
+            case DOWN -> Direction.NORTH;
+        };
+    }
+
+    /**
+     * Removes a populated rack and hands the rack plus its terminals to the
+     * player, so nothing lands on the floor and nothing is lost.
+     */
+    private static void takeWhole(Level level, BlockPos pos,
+                                  com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlock mount,
+                                  com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlockEntity rack,
+                                  Player player) {
+        java.util.List<ItemStack> contents = rack.drainTerminals();
+        level.removeBlock(pos, false);
+
+        give(player, new ItemStack(mount), pos, level);
+        for (ItemStack stack : contents) {
+            give(player, stack, pos, level);
+        }
+    }
+
+    /** Adds {@code stack} to the player, dropping it at {@code pos} if the inventory is full. */
+    private static void give(Player player, ItemStack stack, BlockPos pos, Level level) {
+        if (!player.addItem(stack)) {
+            Block.popResource(level, pos, stack);
         }
     }
 

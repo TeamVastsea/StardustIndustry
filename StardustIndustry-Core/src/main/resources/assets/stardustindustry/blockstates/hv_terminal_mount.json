@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "facing=north": { "model": "stardustindustry:block/hv_terminal_mount_north" },
+    "facing=south": { "model": "stardustindustry:block/hv_terminal_mount_south" },
+    "facing=east": { "model": "stardustindustry:block/hv_terminal_mount_east" },
+    "facing=west": { "model": "stardustindustry:block/hv_terminal_mount_west" },
+    "facing=up": { "model": "stardustindustry:block/hv_terminal_mount_up" },
+    "facing=down": { "model": "stardustindustry:block/hv_terminal_mount_down" }
+  }
+}

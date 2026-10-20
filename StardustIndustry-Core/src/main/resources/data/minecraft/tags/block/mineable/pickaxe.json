@@ -1,0 +1,9 @@
+{
+  "replace": false,
+  "values": [
+    "stardustindustry:lv_terminal_mount",
+    "stardustindustry:mv_terminal_mount",
+    "stardustindustry:hv_terminal_mount",
+    "stardustindustry:ehv_terminal_mount"
+  ]
+}

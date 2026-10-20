@@ -1,0 +1,23 @@
+{
+  "parent": "minecraft:block/block",
+  "textures": {
+    "particle": "stardustindustry:block/terminal_plate",
+    "plate": "stardustindustry:block/terminal_plate",
+    "seat": "stardustindustry:block/terminal_seat",
+    "post": "stardustindustry:block/terminal_stud"
+  },
+  "elements": [
+    {
+      "from": [0, 0, 14],
+      "to": [16, 16, 16],
+      "faces": {
+        "north": { "texture": "#plate" },
+        "east": { "texture": "#plate" },
+        "south": { "texture": "#plate" },
+        "west": { "texture": "#plate" },
+        "up": { "texture": "#plate" },
+        "down": { "texture": "#plate" }
+      }
+    }
+  ]
+}

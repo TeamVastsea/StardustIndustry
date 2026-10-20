@@ -68,6 +68,14 @@ public final class ModBlockEntities {
                     () -> BlockEntityType.Builder.of(com.stardustindustry.stardustindustry.machine.tank.GasTankBlockEntity::new,
                             ModBlocks.GAS_TANK_SHELL.get()).build(null));
 
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlockEntity>> TERMINAL_MOUNT =
+            BLOCK_ENTITIES.register("terminal_mount",
+                    () -> BlockEntityType.Builder.of(com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlockEntity::new,
+                            ModBlocks.LV_TERMINAL_MOUNT.get(),
+                            ModBlocks.MV_TERMINAL_MOUNT.get(),
+                            ModBlocks.HV_TERMINAL_MOUNT.get(),
+                            ModBlocks.EHV_TERMINAL_MOUNT.get()).build(null));
+
     private ModBlockEntities() {}
 
     public static void register(IEventBus eventBus) {

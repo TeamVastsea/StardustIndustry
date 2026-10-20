@@ -45,3 +45,30 @@ runs/
 **/src/generated/**/.cache/
 repo/
 !**/src/**/repo/
+
+### Stray JAR / decompiler dump at the repository root ###
+# A NeoForge jar was once extracted into the repo root. These are NOT project
+# sources: the real ones live under StardustIndustry-*/src/main/. Each pattern
+# is anchored with a leading slash so the modules' own assets/data directories
+# are never ignored. Verified contents:
+#   com/mojang, net/minecraft, net/neoforged  -> unpacked classes
+#   assets/{c,minecraft,neoforge}, data/{...} -> vanilla/mod resources
+#   META-INF/                                 -> NeoForge manifest + mods.toml
+#   mcp/client                                -> decompiler cache
+#   neoforge.mixins.json                      -> package net.neoforged.neoforge.mixins
+#   pack.mcmeta                               -> pack.neoforge.description
+/assets/
+/data/
+/com/
+/net/
+/mcp/
+/META-INF/
+/reports/
+/mcplogo.png
+/neoforged_logo.png
+/url.png
+/forge.exc
+/forge.sas
+/forge.srg
+/neoforge.mixins.json
+/pack.mcmeta
