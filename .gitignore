@@ -72,3 +72,8 @@ repo/
 /forge.srg
 /neoforge.mixins.json
 /pack.mcmeta
+
+### NOTE: the directories above are kept on disk ON PURPOSE (vanilla/NeoForge
+### sources for reference). They are ignored by Git, by the IDE indexer
+### (.idea/fileIndexingSettings.xml) and by Gradle (build.gradle.kts excludes).
+### Do not delete them; do not un-ignore them.

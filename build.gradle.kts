@@ -45,8 +45,25 @@ allprojects {
     version = rootProject.property("mod_version").toString()
 }
 
+// A NeoForge jar was once extracted into the repository root. Those directories
+// are kept on disk as vanilla/NeoForge reference sources, but they are not part
+// of the build: excluding them from every source set keeps Gradle from walking
+// ~6k unrelated files on each configuration/compilation pass.
+val unpackedReferenceDirs = listOf(
+    "assets", "com", "data", "net", "mcp", "META-INF", "reports",
+)
+
 subprojects {
     val module = requireNotNull(modules[path]) { "Missing module metadata for $path" }
+
+    pluginManager.withPlugin("java") {
+        extensions.configure<SourceSetContainer> {
+            configureEach {
+                java.exclude(unpackedReferenceDirs)
+                resources.exclude(unpackedReferenceDirs)
+            }
+        }
+    }
 
     repositories {
         mavenCentral()
