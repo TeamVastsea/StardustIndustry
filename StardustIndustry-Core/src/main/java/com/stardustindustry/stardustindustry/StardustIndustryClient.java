@@ -59,6 +59,26 @@ public class StardustIndustryClient {
         event.registerReloadListener(new com.stardustindustry.stardustindustry.client.TerminalModelConfigs());
     }
 
+    /**
+     * Drops a half-pulled cable when the player leaves the world.
+     *
+     * <p>The pending "loose end" is client-local, so nothing on the server ever
+     * clears it. Without this hook a player who starts a cable, quits and rejoins
+     * would still be holding an end that points at a position from the previous
+     * session — and their next right-click on any terminal would try to connect to
+     * it. Clearing on logout is what makes the gesture self-contained.</p>
+     */
+    @SubscribeEvent
+    static void onLoggingOut(net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent.LoggingOut event) {
+        com.stardustindustry.stardustindustry.energy.PendingCable.clear();
+    }
+
+    /** Drops it on a dimension change too: the endpoint's coordinates mean a different place there. */
+    @SubscribeEvent
+    static void onClone(net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent.Clone event) {
+        com.stardustindustry.stardustindustry.energy.PendingCable.clear();
+    }
+
     @SubscribeEvent
     static void onRegisterRenderers(net.neoforged.neoforge.client.event.EntityRenderersEvent.RegisterRenderers event) {
         net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider<com.stardustindustry.stardustindustry.machine.MachineBlockEntity> provider =
@@ -76,5 +96,8 @@ public class StardustIndustryClient {
         event.registerBlockEntityRenderer(
                 com.stardustindustry.stardustindustry.registry.ModBlockEntities.TERMINAL_MOUNT.get(),
                 com.stardustindustry.stardustindustry.client.TerminalMountRenderer::new);
+        // Cables are drawn by the SAME renderer, not a second registration: a block
+        // entity type maps to exactly one renderer, so registering CableRenderer
+        // separately would replace the terminal posts rather than add to them.
     }
 }

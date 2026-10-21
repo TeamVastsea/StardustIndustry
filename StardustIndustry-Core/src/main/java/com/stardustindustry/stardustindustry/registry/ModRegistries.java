@@ -32,6 +32,11 @@ public final class ModRegistries {
      * The single creative tab for this mod. Content is added through the
      * {@code BuildCreativeModeTabContentsEvent} so that every feature package
      * can contribute without knowing about the others.
+     *
+     * <p>The tab was declared but never filled, so every item this mod registers
+     * was invisible in creative mode — which is why "there is no LV cable" was
+     * reported after the cables had in fact been registered. Cables are added
+     * here directly while the electrical line-up is still small.</p>
      */
     public static final DeferredHolder<CreativeModeTab, CreativeModeTab> MAIN_TAB = CREATIVE_TABS.register("main",
             () -> CreativeModeTab.builder()
@@ -39,7 +44,12 @@ public final class ModRegistries {
                     .withTabsBefore(CreativeModeTabs.COMBAT)
                     .icon(() -> new net.minecraft.world.item.ItemStack(ModBlocks.FLUID_TANK_SHELL_ITEM.get()))
                     .displayItems((parameters, output) -> {
-                        // Populated by ModItems and the feature packages.
+                        // Cables in class order: thin to thick, bare to insulated. This
+                        // is where the whole electrical line-up lives for now; the
+                        // terminals join when the tab gets a proper layout.
+                        for (var cable : ModItems.cables()) {
+                            output.accept(cable.get());
+                        }
                     })
                     .build());
 

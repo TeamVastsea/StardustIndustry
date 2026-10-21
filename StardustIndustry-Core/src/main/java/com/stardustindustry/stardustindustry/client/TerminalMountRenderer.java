@@ -175,31 +175,13 @@ public class TerminalMountRenderer implements BlockEntityRenderer<TerminalMountB
             }
 
             // Cell centre in grid fractions, left to right and bottom up as seen by
-            // a player looking at the face. It is expressed on the face and then
-            // carried onto the real direction, which is the only way a floor or a
-            // ceiling plate can get its cells right: there "up the face" is not
-            // world up.
-            float u = (grid.columnOf(cell) + 0.5f) / grid.columns();
-            float v = (grid.rowOf(cell) + 0.5f) / grid.rows();
-            Vector3f[] basis = FACES.getOrDefault(facing, FACES.get(Direction.NORTH));
-            float across = u - 0.5f;            // -0.5 .. 0.5, + along basis[0]
-            float along = v - 0.5f;             // -0.5 .. 0.5, + along basis[1]
-
-            // basis[2] is the direction the terminal GROWS: out of the block into
-            // the room. The backplate is therefore on the OPPOSITE side, at
-            // -basis[2] * 7/16 from the centre, and its room-facing surface is
-            // exactly there. The foot starts on that surface and the post grows
-            // away from it, so the offset is NEGATIVE.
-            //
-            // With the sign flipped (+) the foot landed at +7/16 - the far side of
-            // the block - so the post started behind the wall and drilled into it,
-            // which is the "terminals grow into the wall" report. The growth
-            // DIRECTION was already right for the ceiling and floor racks, which is
-            // why only the wall racks looked wrong in the last test.
-            Vector3f at = new Vector3f(0.5f, 0.5f, 0.5f)
-                    .add(new Vector3f(basis[0]).mul(across))
-                    .add(new Vector3f(basis[1]).mul(along))
-                    .add(new Vector3f(basis[2]).mul(-PLATE_OFFSET * UNIT));
+            // a player looking at the face. The geometry itself lives in
+            // TerminalGeometry so this renderer, the cable renderer and the
+            // interaction code all agree on where a terminal actually is; a second
+            // copy here is how the drawn post and the cable foot drift apart.
+            Vector3f at = com.stardustindustry.stardustindustry.energy.TerminalGeometry
+                    .footLocal(facing, grid, cell);
+            Vector3f[] basis = com.stardustindustry.stardustindustry.energy.TerminalGeometry.faceAxes(facing);
 
             // Offsets are written in the authored facing=north frame, so they are
             // carried onto the face the same way the cell centre was.
@@ -259,6 +241,11 @@ public class TerminalMountRenderer implements BlockEntityRenderer<TerminalMountB
                     1.0f, 1.0f, 1.0f, packedLight, packedOverlay, ModelData.EMPTY, null);
             pose.popPose();
         }
+
+        // Cables last, so they are drawn over the posts rather than through their
+        // outlines. The rack holds its own half of every cable, and the cable
+        // renderer decides which half owns the geometry.
+        CableRenderer.instance().render(mount, partialTick, pose, buffers, packedLight, packedOverlay);
     }
 
     /**
@@ -274,6 +261,24 @@ public class TerminalMountRenderer implements BlockEntityRenderer<TerminalMountB
                 normal.m00() * axis.x, normal.m01() * axis.x, normal.m02() * axis.x,
                 normal.m10() * axis.y, normal.m11() * axis.y, normal.m12() * axis.y,
                 normal.m20() * axis.z, normal.m21() * axis.z, normal.m22() * axis.z);
+    }
+
+    /**
+     * Cables leave the block, so the rack's culling box must cover them.
+     *
+     * <p>One block would cull a long cable the moment the rack edges off screen,
+     * which looks exactly like the cable being deleted. The cable renderer's box
+     * already grows to the far ends; this delegates to it.</p>
+     */
+    @Override
+    public net.minecraft.world.phys.AABB getRenderBoundingBox(TerminalMountBlockEntity mount) {
+        return CableRenderer.instance().getRenderBoundingBox(mount);
+    }
+
+    @Override
+    public boolean shouldRenderOffScreen(TerminalMountBlockEntity mount) {
+        // The rack itself is one block, but its cables are not.
+        return true;
     }
 
     /**

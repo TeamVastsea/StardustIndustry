@@ -1,5 +1,12 @@
 package com.stardustindustry.stardustindustry.registry;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+import com.stardustindustry.stardustindustry.energy.CableAmpacity;
+import com.stardustindustry.stardustindustry.energy.CableInsulation;
+
 import net.minecraft.world.item.Item;
 import net.neoforged.neoforge.registries.DeferredItem;
 
@@ -45,7 +52,72 @@ public final class ModItems {
     public static final DeferredItem<com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlock.TerminalItem> EHV_TERMINAL =
             terminal("ehv_terminal", com.stardustindustry.stardustindustry.energy.EnergyTier.EHV);
 
+    // ---- cables ----
+    //
+    // Cable is not a block: it is pulled between two terminals and stored on
+    // them. A cable is not rated by voltage tier either. It has two independent
+    // properties (§6.1): a current class (how much copper) and an insulation
+    // class (what a player feels when touching it, §6.11). Every combination is a
+    // real product, so every combination gets an item: 5 x 3 = 15.
+    // See docs/electric-power-system-design.md §6.9.
+
+    // 钢芯铝绞线（ACSR）只有裸线一种，因为它本来就只用于架空长跨距，
+    // 现实中高压架空线不会加绝缘。
+    // See docs/electric-power-system-design.md §6.9.
+
+    /**
+     * Every cable item, keyed by {@code ampacity/insulation}.
+     *
+     * <p>Built from the enums rather than written out, so adding a class adds its
+     * items automatically and the id scheme cannot drift between the two axes.
+     * Registration order is stable (enum order, ampacity outer), which keeps ids
+     * and the creative tab consistent between runs.</p>
+     */
+    private static final Map<String, DeferredItem<com.stardustindustry.stardustindustry.energy.CableItem>> CABLES =
+            cableItems();
+
     private ModItems() {}
+
+    /** The cable item for one combination, never {@code null} once registered. */
+    public static com.stardustindustry.stardustindustry.energy.CableItem cableFor(
+            CableAmpacity ampacity, CableInsulation insulation) {
+        return CABLES.get(keyOf(ampacity, insulation)).get();
+    }
+
+    /** Registry name of the cable for one combination, e.g. {@code cable_500a_class_1}. */
+    public static String cableName(CableAmpacity ampacity, CableInsulation insulation) {
+        return "cable_" + ampacity.id() + "a_" + insulation.id();
+    }
+
+    /** The key used by {@link #CABLES}. */
+    private static String keyOf(CableAmpacity ampacity, CableInsulation insulation) {
+        return ampacity.id() + "/" + insulation.id();
+    }
+
+    /** Registers every combination and returns the map. */
+    private static Map<String, DeferredItem<com.stardustindustry.stardustindustry.energy.CableItem>> cableItems() {
+        Map<String, DeferredItem<com.stardustindustry.stardustindustry.energy.CableItem>> map = new LinkedHashMap<>();
+        for (CableAmpacity ampacity : CableAmpacity.values()) {
+            for (CableInsulation insulation : CableInsulation.values()) {
+                // A bare-only class (steel-cored aluminium) gets ONE item, its bare
+                // form. Registering "800 A class 2 ACSR" would advertise a product
+                // nobody makes and no real line uses.
+                if (ampacity.isBareOnly() && insulation != CableInsulation.BARE) {
+                    continue;
+                }
+                map.put(keyOf(ampacity, insulation), ModRegistries.ITEMS.register(
+                        cableName(ampacity, insulation),
+                        () -> new com.stardustindustry.stardustindustry.energy.CableItem(
+                                new Item.Properties().stacksTo(64), ampacity, insulation)));
+            }
+        }
+        return Collections.unmodifiableMap(map);
+    }
+
+    /** Every cable item, for the creative tab and for iteration. */
+    public static java.util.Collection<DeferredItem<com.stardustindustry.stardustindustry.energy.CableItem>> cables() {
+        return CABLES.values();
+    }
 
     /** Terminal items stack high: they are small, cheap-to-make fittings. */
     private static DeferredItem<com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlock.TerminalItem> terminal(

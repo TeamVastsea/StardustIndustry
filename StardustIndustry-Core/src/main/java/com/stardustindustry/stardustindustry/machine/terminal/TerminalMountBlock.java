@@ -39,6 +39,10 @@ import net.minecraft.world.phys.shapes.VoxelShape;
  * player free placement: any cell may be filled in any order, and the rack
  * simply records which cells are occupied.</p>
  *
+ * <p>Two different items belong here and must not be confused: a <b>terminal</b>
+ * is the fitting bolted onto the plate, a <b>cable</b> is the conductor pulled
+ * between two terminals. Holding a terminal never lays cable.</p>
+ *
  * <h2>What {@link #FACING} means</h2>
  * <p><b>{@code FACING} is the side the backplate is bolted against</b>, not the
  * side the grid faces. The terminals stand on that plate and grow out of the
@@ -162,6 +166,197 @@ public class TerminalMountBlock extends Block implements EntityBlock {
 
     // ---- interactions ----
 
+    /**
+     * Handles a plain right-click on a bolted terminal: start, move or finish a
+     * cable.
+     *
+     * <h2>Client and server play different halves</h2>
+     * <p>The <b>client</b> owns the pending "loose end": the first click remembers
+     * it, a click on another terminal sends one request, and a click on the same
+     * terminal again drops it. The <b>server</b> keeps no pending state at all and
+     * treats every request as "validate and try" — see
+     * {@code PendingCable#complete}. That split is why a desynced client can at
+     * worst send a request that is rejected, never half-create a cable.</p>
+     *
+     * <h2>The held item decides when a cable is made</h2>
+     * <p>A click <b>moves the loose end</b>, nothing more. The cable is only strung
+     * when the player clicks with a cable in hand, and the cable's class is taken
+     * from that item. That is what makes "hold a terminal to pull a cable" wrong:
+     * a terminal is a fitting, not a conductor.</p>
+     *
+     * <p>The click is consumed either way, so a right-click on a terminal never
+     * falls through to block placement.</p>
+     */
+    private ItemInteractionResult handleCableClick(ItemStack stack, BlockState state, Level level, BlockPos pos,
+                                                   Player player, int cell) {
+        if (!(level.getBlockEntity(pos) instanceof TerminalMountBlockEntity rack)) {
+            return ItemInteractionResult.CONSUME;
+        }
+        if (rack.terminalTier(cell) == null) {
+            return ItemInteractionResult.CONSUME;
+        }
+        com.stardustindustry.stardustindustry.energy.TerminalEndpoint clicked =
+                new com.stardustindustry.stardustindustry.energy.TerminalEndpoint(pos, cell);
+
+        if (level.isClientSide()) {
+            com.stardustindustry.stardustindustry.energy.PendingCable.validateOwner(player);
+            com.stardustindustry.stardustindustry.energy.TerminalEndpoint from =
+                    com.stardustindustry.stardustindustry.energy.PendingCable.from();
+            // Both hands, not just the hand this click arrived in. A player who
+            // keeps the spool in the offhand right-clicks with an empty main hand,
+            // so testing `stack` alone read "no cable" and silently moved the
+            // loose end instead of stringing the wire — the click appeared to do
+            // nothing at all. The server's PendingCable#heldCable checks both
+            // hands too, so the client and server now agree on the gesture.
+            boolean holdingCable =
+                    com.stardustindustry.stardustindustry.energy.PendingCable.heldCable(player) != null;
+
+            if (from == null) {
+                // Nothing held yet: this click picks up a loose end here. It does
+                // not matter what the player is holding — the loose end is just a
+                // place the next cable will come from.
+                com.stardustindustry.stardustindustry.energy.PendingCable.begin(player, clicked);
+                player.displayClientMessage(Component.translatable(
+                        holdingCable
+                                ? "message.stardustindustry.cable.started"
+                                : "message.stardustindustry.cable.started_no_cable")
+                        .withStyle(ChatFormatting.GRAY), true);
+            } else if (from.equals(clicked)) {
+                // Clicking the loose end's own terminal again puts it back.
+                com.stardustindustry.stardustindustry.energy.PendingCable.clear();
+                player.displayClientMessage(Component.translatable(
+                        "message.stardustindustry.cable.cancelled").withStyle(ChatFormatting.GRAY), true);
+            } else if (!holdingCable) {
+                // Moving the end is free and is the natural thing to do when the
+                // first choice was wrong, so an empty hand re-aims instead of
+                // erroring.
+                com.stardustindustry.stardustindustry.energy.PendingCable.begin(player, clicked);
+                player.displayClientMessage(Component.translatable(
+                        "message.stardustindustry.cable.moved").withStyle(ChatFormatting.GRAY), true);
+            } else {
+                // A cable in hand: hand both ends to the server, which decides.
+                // The client forgets its end immediately so a rejected request
+                // leaves nothing dangling behind.
+                net.neoforged.neoforge.network.PacketDistributor.sendToServer(
+                        new com.stardustindustry.stardustindustry.network.ConnectCablePayload(
+                                from.pos(), from.cell(), pos, cell));
+                com.stardustindustry.stardustindustry.energy.PendingCable.clear();
+            }
+        }
+        return ItemInteractionResult.SUCCESS;
+    }
+
+    /**
+     * Cut or paint a cable that the aim ray crosses.
+     *
+     * <h2>The gestures</h2>
+     * <ul>
+     *   <li><b>Dye in hand</b> + right-click a cable → paint it that colour.</li>
+     *   <li><b>Empty hand</b> + right-click a cable → cut it and take the spool
+     *       back. This is the "I laid the wrong wire" escape, and it has to exist
+     *       separately from unscrewing terminals because a terminal can now hold
+     *       several cables.</li>
+     * </ul>
+     *
+     * <p>Neither gesture touches the terminals: the client tests its view ray
+     * against the hanging wire itself ({@link TerminalMountBlockEntity#cableAtRay}),
+     * which is the only thing that makes "click the cable" possible at all, since
+     * a cable has no collision box. The server then acts on the cable the client
+     * names, having checked that the cable really is on this rack and that the dye
+     * claimed is really in hand.</p>
+     *
+     * @return true when the click was about a cable and has been handled
+     */
+    private boolean handleCableEdit(ItemStack stack, Level level, BlockPos pos, Player player, BlockHitResult hit) {
+        if (!(level.getBlockEntity(pos) instanceof TerminalMountBlockEntity mount)) {
+            return false;
+        }
+        // A dye always means "paint"; an empty hand means "cut". Anything else
+        // (the installation tool, a pickaxe, a cable spool) is left to its own
+        // handler, so dyeing never swallows an unrelated click.
+        int dyeIndex = -1;
+        boolean cutting = false;
+        if (stack.getItem() instanceof net.minecraft.world.item.DyeItem) {
+            dyeIndex = ((net.minecraft.world.item.DyeItem) stack.getItem()).getDyeColor().ordinal();
+        } else if (stack.isEmpty()) {
+            // An empty hand cuts — unless a cable is held in the *other* hand. A
+            // player who keeps the spool in the offhand right-clicks with an empty
+            // main hand, and the aim ray often grazes an existing wire on its way
+            // to the terminal; treating that as "cut" silently destroyed a cable
+            // during what was meant to be a connection. Holding a cable anywhere
+            // therefore means "wiring", never "cutting".
+            if (com.stardustindustry.stardustindustry.energy.PendingCable.heldCable(player) != null) {
+                return false;
+            }
+            cutting = true;
+        } else {
+            return false;
+        }
+
+        if (level.isClientSide()) {
+            // The client owns the aim. It finds the cable along the real view ray —
+            // the same approximation the player sees — and sends exactly which
+            // cable it hit. The server does not try to re-derive that ray, because
+            // the click's impact point is on the plate, which is nowhere near the
+            // wire: it validates what was claimed instead (the cable exists on
+            // this rack, the dye in hand matches), which is what actually matters.
+            var hitCable = cableUnderRay(level, mount);
+            if (hitCable == null) {
+                // Not a cable: let the click fall through to whatever it really hit.
+                return false;
+            }
+            if (!cutting && !com.stardustindustry.stardustindustry.energy.CableColor.isPaintable(hitCable.insulation())) {
+                // Bare conductor has no sheath to paint. Refuse here where the
+                // message is cheap and immediate; the server refuses the same way,
+                // so a forged packet can never paint a bare wire either.
+                player.displayClientMessage(Component.translatable(
+                                "message.stardustindustry.cable.bare_not_paintable")
+                        .withStyle(ChatFormatting.YELLOW), true);
+                return true;
+            }
+            net.neoforged.neoforge.network.PacketDistributor.sendToServer(
+                    new com.stardustindustry.stardustindustry.network.CableEditPayload(
+                            pos, hitCable.a().pos(), hitCable.a().cell(),
+                            hitCable.b().pos(), hitCable.b().cell(),
+                            hitCable.ampacity(), hitCable.insulation(),
+                            cutting
+                                    ? com.stardustindustry.stardustindustry.network.CableEditPayload.CUT
+                                    : dyeIndex));
+            return true;
+        }
+        // Server side the work is done by the packet handler, which has the
+        // player's exact position and the claimed cable. Reaching here means a
+        // client sent no packet, so there is nothing to do.
+        return false;
+    }
+
+    /**
+     * The cable the local player's view ray crosses through {@code mount}, or
+     * {@code null}.
+     *
+     * <p>Client only: it needs the camera, which the server does not have.
+     * {@code hit} is deliberately not used — the click's impact point lies on the
+     * rack's plate, while the wire hangs out in the room, so the impact point
+     * says nothing about which wire was aimed at.</p>
+     */
+    private static com.stardustindustry.stardustindustry.energy.CableConnection cableUnderRay(
+            Level level, TerminalMountBlockEntity mount) {
+        net.minecraft.client.player.LocalPlayer player = net.minecraft.client.Minecraft.getInstance().player;
+        if (player == null) {
+            return null;
+        }
+        float partialTick = net.minecraft.client.Minecraft.getInstance()
+                .getTimer().getGameTimeDeltaPartialTick(false);
+        return mount.cableAtRay(player.getEyePosition(partialTick), player.getViewVector(partialTick),
+                CABLE_PICK_RADIUS, player.blockInteractionRange() + CABLE_PICK_REACH);
+    }
+
+    /** How close the aim ray must pass to a cable for it to be clickable, in blocks. */
+    private static final float CABLE_PICK_RADIUS = 0.18f;
+
+    /** Extra reach beyond normal block interaction, so a wire above eye level is still clickable. */
+    private static final double CABLE_PICK_REACH = 4.0;
+
     @Override
     protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level, BlockPos pos,
                                               Player player, InteractionHand hand, BlockHitResult hit) {
@@ -169,18 +364,35 @@ public class TerminalMountBlock extends Block implements EntityBlock {
             return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
         }
 
+        // Cables are cut and painted before anything else: they have no collision
+        // box, so the ray has to be tested against the wire itself, and a click
+        // that lands on a wire must not be read as "place a terminal here".
+        if (handleCableEdit(stack, level, pos, player, hit)) {
+            return ItemInteractionResult.SUCCESS;
+        }
+
+        // The cable gesture outranks shift-click. Holding a cable means "wire this
+        // up", and the old order (shift first) made a crouching player's click do
+        // nothing at all when the spool was in the main hand, and unscrew the
+        // terminal when it was in the offhand. Sneaking while clicking a terminal is
+        // far too common to leave that ambiguity in.
+        int cell = mount.cellFromHit(state, hit);
+        boolean hasTerminalHere = cell >= 0 && mount.hasTerminal(cell);
+        boolean wiring =
+                com.stardustindustry.stardustindustry.energy.PendingCable.heldCable(player) != null;
+        if (hasTerminalHere && (wiring || !player.isShiftKeyDown())) {
+            return handleCableClick(stack, state, level, pos, player, cell);
+        }
+
         // Shift-click is the "remove / take" family and never places.
         if (player.isShiftKeyDown()) {
             // The installation tool's own useOn handles "take the whole rack";
             // reaching here means an empty hand or a plain tool.
-            if (stack.isEmpty()) {
-                int cell = mount.cellFromHit(state, hit);
-                if (cell >= 0 && mount.hasTerminal(cell)) {
-                    if (!level.isClientSide()) {
-                        mount.removeTerminal(cell, player);
-                    }
-                    return ItemInteractionResult.SUCCESS;
+            if (stack.isEmpty() && hasTerminalHere) {
+                if (!level.isClientSide()) {
+                    mount.removeTerminal(cell, player);
                 }
+                return ItemInteractionResult.SUCCESS;
             }
             return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
         }
@@ -195,7 +407,6 @@ public class TerminalMountBlock extends Block implements EntityBlock {
         // They are separate codes so a miss still shows the "clicked off the grid"
         // hint while an impossible cell stays silent: telling the player the click
         // missed when it did not is worse than saying nothing.
-        int cell = mount.cellFromHit(state, hit);
         if (cell == TerminalMountBlockEntity.CELL_OUTSIDE_PLATE) {
             if (!level.isClientSide()) {
                 player.displayClientMessage(Component.translatable(
@@ -247,6 +458,31 @@ public class TerminalMountBlock extends Block implements EntityBlock {
         if (params.getOptionalParameter(net.minecraft.world.level.storage.loot.parameters.LootContextParams.BLOCK_ENTITY)
                 instanceof TerminalMountBlockEntity mount) {
             collectTerminalDrops(mount, drops);
+            // Cables come off with the rack, and they come off from <b>both</b>
+            // ends. Clearing only this rack's half (the first version did exactly
+            // that) left the far rack still holding a record pointing here, so
+            // putting a new rack in the same place made the cable reappear out of
+            // nowhere — the line was never deleted, only orphaned.
+            Level level = params.getLevel();
+            for (com.stardustindustry.stardustindustry.energy.CableConnection cable
+                    : new java.util.ArrayList<>(mount.cables())) {
+                ItemStack cableStack =
+                        com.stardustindustry.stardustindustry.energy.CableService.disconnect(level, cable);
+                if (cableStack.isEmpty()) {
+                    // The far half was unloaded: this half is gone either way, and
+                    // the player must still get the spool back. The far record is
+                    // pruned by its own block entity when its chunk loads — see
+                    // TerminalMountBlockEntity#onLoad.
+                    cableStack = com.stardustindustry.stardustindustry.energy.CableItem.stackOf(cable);
+                }
+                if (!cableStack.isEmpty()) {
+                    drops.add(cableStack);
+                }
+            }
+            // Belt and braces: whatever the loop did not reach is cleared here, so
+            // the block entity cannot be handed back to the world still holding
+            // cable halves.
+            mount.disconnectAllCables();
         }
         return drops;
     }
