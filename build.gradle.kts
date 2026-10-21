@@ -57,10 +57,26 @@ subprojects {
     val module = requireNotNull(modules[path]) { "Missing module metadata for $path" }
 
     pluginManager.withPlugin("java") {
+        val rootAbs = rootDir.toPath().toAbsolutePath().normalize()
+        val excludedRoots = unpackedReferenceDirs
+            .map { rootAbs.resolve(it) }
+            .filter { it.toFile().isDirectory }
         extensions.configure<SourceSetContainer> {
             configureEach {
-                java.exclude(unpackedReferenceDirs)
-                resources.exclude(unpackedReferenceDirs)
+                // Drop only files that actually sit under a stray root-level dump.
+                // A plain exclude("com") also matched the module's OWN
+                // src/main/java/com/... because source-set excludes work on paths
+                // relative to each source root - that silently emptied every module
+                // once (compileJava went NO-SOURCE while still reporting success).
+                // Filtering on normalised absolute paths cannot make that mistake.
+                java.filter.exclude { details ->
+                    val file = details.file.toPath().toAbsolutePath().normalize()
+                    excludedRoots.any { file.startsWith(it) }
+                }
+                resources.filter.exclude { details ->
+                    val file = details.file.toPath().toAbsolutePath().normalize()
+                    excludedRoots.any { file.startsWith(it) }
+                }
             }
         }
     }
