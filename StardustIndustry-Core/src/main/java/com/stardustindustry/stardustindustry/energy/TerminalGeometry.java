@@ -43,19 +43,21 @@ public final class TerminalGeometry {
 
     private TerminalGeometry() {}
 
-    /** OBJ units per block. The renderer's {@code UNIT}. */
-    public static final float UNIT = 1.0f / 16.0f;
-
     /**
      * How far the plate's room-facing surface sits from the block centre, in
-     * block units, measured <b>against</b> the growth direction.
+     * <b>blocks</b>, measured <b>against</b> the growth direction.
      *
-     * <p>Half a block is 8 units and the plate is 1 unit thick, flush with the
-     * {@code FACING} face, so its inner surface is 7 units out from the centre.
-     * Terminals stand on that surface; the sign at the call site is negative
-     * because the frame's {@code normal} points into the room, away from it.</p>
+     * <p>Half a block is {@code 0.5} and the plate is {@code 1/16} thick, flush
+     * with the {@code FACING} face, so its inner surface is
+     * {@code 0.5 - 1/16 = 7/16 = 0.4375} blocks out from the centre. Terminals
+     * stand on that surface; the sign at the call site is negative because the
+     * frame's {@code normal} points into the room, away from it.</p>
+     *
+     * <p>Expressed in blocks so this file never mixes units with the pose files
+     * (also blocks); the only 1/16 conversion left is inside
+     * {@code TerminalMountRenderer}, for raw OBJ vertices.</p>
      */
-    public static final float PLATE_OFFSET = 7.0f;
+    public static final float PLATE_OFFSET = 7.0f / 16.0f;
 
     /**
      * The face frame: {@code {right, up, normal}} per {@code FACING}.
@@ -98,6 +100,9 @@ public final class TerminalGeometry {
      * <p>This is the cell's centre projected onto the plate's room-facing surface:
      * the cell centre in the grid's u/v frame, carried onto the real face by the
      * basis, then pulled {@code PLATE_OFFSET} out along the plate's side.</p>
+     *
+     * <p>This is the <b>art</b> origin: where the terminal renderer starts from,
+     * and the point an {@code anchor} is measured from. See {@link #anchorLocal}.</p>
      */
     public static Vector3f footLocal(Direction facing, TerminalGrid grid, int cell) {
         Vector3f[] basis = faceAxes(facing);
@@ -106,12 +111,27 @@ public final class TerminalGeometry {
         return new Vector3f(0.5f, 0.5f, 0.5f)
                 .add(new Vector3f(basis[0]).mul(u - 0.5f))
                 .add(new Vector3f(basis[1]).mul(v - 0.5f))
-                .fma(-PLATE_OFFSET * UNIT, new Vector3f(basis[2]));
+                .fma(-PLATE_OFFSET, new Vector3f(basis[2]));
     }
 
     /**
-     * The foot of a terminal in <b>world</b> coordinates: the point a cable is
-     * anchored to, and where the post starts.
+     * The cell centre, before any plate stand-off.
+     *
+     * <p>Kept for callers that want the plate's middle regardless of how thick
+     * the backplate is. The cable anchor does <b>not</b> use it — see
+     * {@link #anchorLocal}, which measures from {@link #footLocal} instead.</p>
+     */
+    public static Vector3f cellCentreLocal(Direction facing, TerminalGrid grid, int cell) {
+        Vector3f[] basis = faceAxes(facing);
+        float u = (grid.columnOf(cell) + 0.5f) / grid.columns();
+        float v = (grid.rowOf(cell) + 0.5f) / grid.rows();
+        return new Vector3f(0.5f, 0.5f, 0.5f)
+                .add(new Vector3f(basis[0]).mul(u - 0.5f))
+                .add(new Vector3f(basis[1]).mul(v - 0.5f));
+    }
+
+    /**
+     * The foot of a terminal in <b>world</b> coordinates: where the post starts.
      */
     public static Vector3f footWorld(net.minecraft.core.BlockPos pos, Direction facing,
                                      TerminalGrid grid, int cell) {
@@ -120,22 +140,100 @@ public final class TerminalGeometry {
     }
 
     /**
-     * A point just beyond the foot along the growth direction, so a cable does
-     * not start buried inside the plate.
+     * The world point a cable hangs from, for this cell.
      *
-     * <p>Kept small on purpose: the terminal post is the visible thing, and the
-     * cable should appear to come off its tip rather than out of the wall. The
-     * value is a standoff in block units, not the post's length — the artist
-     * decides that, and a cable that depended on it would break the moment the
-     * OBJ changed.</p>
+     * <h2>The origin is the MODEL ORIGIN — the same point the artist sees in their editor</h2>
+     * <p>{@code anchor} is measured <b>from the model's own origin</b>, i.e. the
+     * foot of the terminal on the plate ({@link #footLocal}). The model is authored
+     * with {@code (0,0,0)} at the centre of its base, growing along {@code +z}, so
+     * that is exactly what a modelling tool shows when the artist puts the cursor
+     * on the spot where the wire should leave. To wire the top of a post drawn
+     * {@code z = 0.625} long, the artist writes {@code anchor.z = 0.625} and gets
+     * that point — no trial and error.</p>
+     *
+     * <h2>Why not the block centre</h2>
+     * <p>Two earlier attempts measured the anchor from the block centre (and, in
+     * one version, from the cell centre). That is <b>not</b> a point any modelling
+     * tool shows: the model origin sits on the plate's room-facing surface, half a
+     * block away from the block centre, and the gap depends on how thick the
+     * backplate is for that tier. The result was an anchor frame the artist could
+     * only reach by guessing, and all-zero did not mean "start of the model"
+     * either — which is precisely the "anchor numbers do nothing" complaint.</p>
+     *
+     * <h2>Units are blocks (metres)</h2>
+     * <p>One number is one block, the same ruler as {@code offset / origin} and as
+     * the modelling software when one block is modelled as one metre: {@code 0.625}
+     * means {@code 0.625} of a block, i.e. one OBJ unit {@code 10} in a file where
+     * a block spans {@code 0..16}. The axis meaning is the {@code offset} one —
+     * {@code x} right along the face, {@code y} up along the face, {@code z} out of
+     * the plate into the room — carried by the face basis so all six facings agree.</p>
+     *
+     * <p>An all-zero anchor therefore lands exactly on the model's origin, on the
+     * plate surface, at the centre of that cell.</p>
      */
-    public static final float CABLE_STANDOFF = 2.0f / 16.0f;
+    public static Vector3f anchorLocal(Direction facing, TerminalGrid grid, int cell, Vector3f anchorOffset) {
+        Vector3f[] basis = faceAxes(facing);
+        Vector3f offset = new Vector3f(anchorOffset);
+        // Start at the MODEL ORIGIN = the foot the renderer also starts from. The
+        // per-cell placement is already inside footLocal, so a multi-cell rack gets
+        // one anchor per cell for free and no extra spread term is needed.
+        //
+        // The offset's x/y/z mean right/up/out-of-the-plate, so they are carried by
+        // the basis rather than added raw: on a floor plate "up" is +y but "out"
+        // is +y too, and on a ceiling they swap sign.
+        return footLocal(facing, grid, cell)
+                .add(new Vector3f(basis[0]).mul(offset.x))
+                .add(new Vector3f(basis[1]).mul(offset.y))
+                .add(new Vector3f(basis[2]).mul(offset.z));
+    }
 
-    /** The world point a cable hangs from, offset clear of the plate. */
-    public static Vector3f cableAnchor(net.minecraft.core.BlockPos pos, Direction facing,
-                                       TerminalGrid grid, int cell) {
-        Vector3f foot = footWorld(pos, facing, grid, cell);
-        return foot.fma(CABLE_STANDOFF, growth(facing));
+    /** World-space form of {@link #anchorLocal}. */
+    public static Vector3f anchorWorld(net.minecraft.core.BlockPos pos, Direction facing,
+                                       TerminalGrid grid, int cell, Vector3f anchorOffset) {
+        Vector3f local = anchorLocal(facing, grid, cell, anchorOffset);
+        return new Vector3f(local.x + pos.getX(), local.y + pos.getY(), local.z + pos.getZ());
+    }
+
+    /**
+     * Where the anchor offset for a model key comes from.
+     *
+     * <h2>Why a hook instead of a direct call</h2>
+     * <p>The numbers live in the client's pose files
+     * ({@code TerminalModelConfigs}), but the anchor is needed on the
+     * <b>server</b> too — cable length, reach checks and the click test all run
+     * there while a client's files are irrelevant. So the client installs a
+     * supplier at startup, and a dedicated server simply leaves it unset and gets
+     * the documented default. That keeps {@code energy/} free of client classes,
+     * which is what lets the module be loaded on a server at all.</p>
+     */
+    private static volatile java.util.function.Function<String, Vector3f> anchorSource;
+
+    /** Installs the anchor lookup. Called once from the client, on setup. */
+    public static void setAnchorSource(java.util.function.Function<String, Vector3f> source) {
+        anchorSource = source;
+    }
+
+    /**
+     * The configured anchor offset for a terminal style's model key.
+     *
+     * <p>Falls back to {@code (0, 0, 0)} — the model origin — when no source is
+     * installed or the key is unknown, so a server that never loaded the client
+     * still anchors cables in the same place as an unconfigured pose.</p>
+     */
+    public static Vector3f anchorOffsetFor(String modelKey) {
+        java.util.function.Function<String, Vector3f> source = anchorSource;
+        if (source != null) {
+            try {
+                Vector3f value = source.apply(modelKey);
+                if (value != null) {
+                    return value;
+                }
+            } catch (RuntimeException ignored) {
+                // A broken client-side table must not take the cable code down;
+                // the default anchor is a valid position.
+            }
+        }
+        return new Vector3f(0f, 0f, 0f);
     }
 
     /** How many straight segments approximate a hanging cable, in renderer and picking alike. */

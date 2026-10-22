@@ -11,6 +11,7 @@ import com.stardustindustry.stardustindustry.energy.EnergyTier;
 import com.stardustindustry.stardustindustry.energy.TerminalGrid;
 import com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlock;
 import com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlockEntity;
+import com.stardustindustry.stardustindustry.machine.terminal.TerminalStyle;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -51,12 +52,13 @@ import net.neoforged.neoforge.client.model.data.ModelData;
  * edit and {@code F3+T}. See {@code docs/obj-model-manual.md}.</p>
  *
  * <h2>Size: the OBJ decides</h2>
- * <p>This renderer applies no fitting at all. The <b>only</b> scale it uses is
- * the OBJ-unit-to-block conversion ({@link #UNIT}) multiplied by the config's
- * {@code scale}, so a terminal is exactly as large as the artist drew it. A
- * 0.5-unit-wide post stays 0.5/16 of a block wide; a 4-unit-long post stands
- * 4/16 of a block off the plate. Keeping a terminal inside its cell is the
- * model's job, and the manual gives the cell size per tier so it can be done.</p>
+ * <p>This renderer applies no fitting at all. The OBJ's vertices are converted
+ * to blocks by the model's own {@code objUnitsPerBlock} (16 for vanilla-style
+ * block units, 1000 for the millimetres this project models in), then multiplied
+ * by the config's {@code scale} ({@code 1.0} = as drawn, {@code 0.5} = half). A
+ * terminal is therefore exactly as large as the artist drew it. Keeping a
+ * terminal inside its cell is the model's job, and the manual gives the cell
+ * size per tier so it can be done.</p>
  *
  * <p>Earlier versions fitted the OBJ to the cell (scale = cell / model width,
  * clamped by the available depth). That made the result depend on the model's
@@ -80,27 +82,11 @@ import net.neoforged.neoforge.client.model.data.ModelData;
         value = net.neoforged.api.distmarker.Dist.CLIENT)
 public class TerminalMountRenderer implements BlockEntityRenderer<TerminalMountBlockEntity> {
 
-    /** Block units per world unit. */
-    private static final float UNIT = 1.0f / 16.0f;
+    /** Baked OBJ per terminal style, filled lazily on the render thread. */
+    private static final Map<TerminalStyle, BakedModel> CACHE = new ConcurrentHashMap<>();
 
-    /**
-     * How far the plate's OUTER face sits from the block centre, in block units,
-     * measured towards the {@code FACING} side.
-     *
-     * <p>The backplate model occupies {@code 0..1} block units from the block's
-     * edge, i.e. it is flush with the {@code FACING} face; its outer surface is
-     * therefore 7 units out from the centre (half a block is 8). Terminals stand
-     * on that surface, so this is where a cell's foot goes - on the plate's side,
-     * never on the far side. Note the sign at the call site: {@link #FACES} row 2
-     * points INTO the block, so this value is subtracted, not added.</p>
-     */
-    private static final float PLATE_OFFSET = 7.0f;
-
-    /** Baked OBJ per tier, filled lazily on the render thread. */
-    private static final Map<EnergyTier, BakedModel> CACHE = new ConcurrentHashMap<>();
-
-    /** Tiers already reported as having no baked model, so each warns once. */
-    private static final java.util.Set<EnergyTier> MISSING_LOGGED =
+    /** Styles already reported as having no baked model, so each warns once. */
+    private static final java.util.Set<TerminalStyle> MISSING_LOGGED =
             java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     public TerminalMountRenderer(BlockEntityRendererProvider.Context context) {
@@ -126,14 +112,15 @@ public class TerminalMountRenderer implements BlockEntityRenderer<TerminalMountB
         // the cell, not the block.
         //
         // Geometry and pose come from the model config
-        // (assets/stardustindustry/models/terminal/<tier>.json), so the artist can
-        // move, turn or resize the insulator without touching this renderer; the
-        // values below are only the fallbacks used when the config is missing.
-        TerminalModelConfig cfg = TerminalModelConfigs.get(mount.tier());
+        // (assets/stardustindustry/models/terminal/<style>.json), keyed by the
+        // TERMINAL STYLE on the cell, not by the rack's tier: several terminals can
+        // exist at one voltage, and each owns its own offset / origin / scale.
+        //
         // The renderer does NOT fit the OBJ to the cell. The size of a terminal is
-        // whatever the artist drew, expressed in OBJ units (1 unit = 1/16 block,
-        // see docs/obj-model-manual.md), and the only scale applied is UNIT - the
-        // OBJ-unit-to-block conversion - times the config's own "scale".
+        // whatever the artist drew, in the file's own unit (declared by
+        // objUnitsPerBlock: 16 for block units, 1000 for millimetres); the vertices
+        // are converted by that once, and the config's "scale" multiplies it
+        // (1.0 = as drawn).
         //
         // Automatic fitting was tried and removed on the project owner's call:
         // "keep the model at its authored size, let the artist decide". It is the
@@ -148,31 +135,42 @@ public class TerminalMountRenderer implements BlockEntityRenderer<TerminalMountB
         // manual lists the cell size per tier and the depth available from the
         // plate (1/16 block) so a post can be authored to sit inside it.
         // No scale-to-fit; a missing model only means nothing is drawn.
-        float scale = UNIT * cfg.scale();
-        // Config lengths are in block units, the pose works in world units.
-        float originX = cfg.originX() * UNIT;
-        float originY = cfg.originY() * UNIT;
-        float originZ = cfg.originZ() * UNIT;
-        float[] offset = new float[] {cfg.offsetX() * UNIT, cfg.offsetY() * UNIT, cfg.offsetZ() * UNIT};
 
         VertexConsumer cutout = buffers.getBuffer(RenderType.cutout());
         for (int cell = 0; cell < cellCount; cell++) {
-            EnergyTier tier = mount.terminalTier(cell);
-            if (tier == null) {
+            TerminalStyle style = mount.terminalStyle(cell);
+            if (style == null) {
                 continue;
             }
-            BakedModel model = modelFor(tier);
+            BakedModel model = modelFor(style);
             if (model == null) {
                 // A rack can hold a bolted terminal that never appears if its OBJ
-                // failed to bake. Say so once per tier rather than every frame,
+                // failed to bake. Say so once per style rather than every frame,
                 // otherwise the log turns into a wall of the same line.
-                if (MISSING_LOGGED.add(tier)) {
+                if (MISSING_LOGGED.add(style)) {
                     org.slf4j.LoggerFactory.getLogger(TerminalMountRenderer.class)
                             .warn("Terminal model stardustindustry:block/terminal_{} did not bake; "
-                                    + "terminals of this tier will be invisible.", tier.getSerializedName());
+                                    + "terminals of this style will be invisible.", style.id());
                 }
                 continue;
             }
+
+            TerminalModelConfig cfg = TerminalModelConfigs.get(style.model());
+            // Pose numbers are in BLOCKS (metres), which is already the unit the
+            // PoseStack works in, so they are used as-is.
+            //
+            // The OBJ's vertices are in whatever unit the exporter writes, and the
+            // artist declares that unit in objUnitsPerBlock (16 = vanilla block
+            // model convention, 1000 = millimetres). Converting by that number is
+            // what lets a post modelled 500 mm up be written as anchor y: 0.5
+            // straight from the tool, with no 1/16 factor for the artist to know
+            // about. "scale" stays a plain multiplier on top of it: a value of 1.0
+            // must mean "no change", never a unit conversion.
+            float scale = (1.0f / cfg.objUnitsPerBlock()) * cfg.scale();
+            float originX = cfg.originX();
+            float originY = cfg.originY();
+            float originZ = cfg.originZ();
+            float[] offset = new float[] {cfg.offsetX(), cfg.offsetY(), cfg.offsetZ()};
 
             // Cell centre in grid fractions, left to right and bottom up as seen by
             // a player looking at the face. The geometry itself lives in
@@ -181,15 +179,9 @@ public class TerminalMountRenderer implements BlockEntityRenderer<TerminalMountB
             // copy here is how the drawn post and the cable foot drift apart.
             Vector3f at = com.stardustindustry.stardustindustry.energy.TerminalGeometry
                     .footLocal(facing, grid, cell);
-            Vector3f[] basis = com.stardustindustry.stardustindustry.energy.TerminalGeometry.faceAxes(facing);
-
-            // Offsets are written in the authored facing=north frame, so they are
-            // carried onto the face the same way the cell centre was.
-            Vector3f shift = new Vector3f(offset[0], offset[1], offset[2]);
-            alignDir(shift, facing);
 
             pose.pushPose();
-            pose.translate(at.x + shift.x, at.y + shift.y, at.z + shift.z);
+            pose.translate(at.x, at.y, at.z);
             // The OBJ is authored for the north face: its own origin is the BASE
             // CENTRE (x = y = 0, z = 0), its axis grows along +z, and its
             // cross-section is measured from that axis. NeoForge's OBJ loader
@@ -198,11 +190,19 @@ public class TerminalMountRenderer implements BlockEntityRenderer<TerminalMountB
             // here is only "local (0,0,0) is the foot".
             //
             // The OBJ must therefore NOT bake the 7/16 standoff into its own
-            // vertices: the cell centre already sits PLATE_OFFSET/16 out from the
+            // vertices: the cell centre already sits 7/16 of a block out from the
             // block centre, so a vertex-level z = 7 would be added twice and push
             // the terminal almost a full block off the plate. See
             // GenTerminalObjPlaceholder for the authored shape.
             pose.mulPose(faceRotation(facing));
+            // The offset is applied AFTER the face rotation, so its three numbers
+            // always mean the same thing to the artist: x = right along the face,
+            // y = up along the face, z = out of the plate into the room. Applying
+            // it before the rotation (in the north-authored frame, then carried by
+            // the basis) was what made "offset.z += 1" push west and east plates
+            // sideways and floors/ceilings vertically — the offset appeared not to
+            // work at all, and the artist had to guess a different axis per face.
+            pose.translate(offset[0], offset[1], offset[2]);
             // The config origin is a pivot INSIDE the model, expressed in model
             // units around the model's own origin (0,0 = the base centre, +z = up
             // the axis), so it is applied BEFORE the config scale and rotation -
@@ -216,7 +216,7 @@ public class TerminalMountRenderer implements BlockEntityRenderer<TerminalMountB
                 // which is what the artist needs when the OBJ's axis points the
                 // other way. The mirror plane sits at the model origin plus
                 // mirrorOffset, so "mirror inside the block" stays tunable.
-                float m = cfg.mirrorOffset() * UNIT;
+                float m = cfg.mirrorOffset();
                 switch (cfg.mirror()) {
                     case "x" -> {
                         pose.translate(m, 0f, 0f);
@@ -360,18 +360,6 @@ public class TerminalMountRenderer implements BlockEntityRenderer<TerminalMountB
     }
 
     /**
-     * Turns a direction with the face's rotation: exactly the matrix returned by
-     * {@link #faceRotation}, applied to a vector.
-     *
-     * <p>This is what carries a config {@code offset} from the authored north
-     * frame onto the real face. Both live in one place so they cannot drift: the
-     * offsets are turned by the same matrix that turns the model.</p>
-     */
-    private static void alignDir(Vector3f d, Direction facing) {
-        faceRotation(facing).transform(d);
-    }
-
-    /**
      * The rotation that takes a model authored facing north and lays it on
      * {@code facing}.
      *
@@ -461,31 +449,31 @@ public class TerminalMountRenderer implements BlockEntityRenderer<TerminalMountB
      */
     @net.neoforged.bus.api.SubscribeEvent
     public static void registerModels(net.neoforged.neoforge.client.event.ModelEvent.RegisterAdditional event) {
-        for (EnergyTier tier : EnergyTier.values()) {
-            event.register(ModelResourceLocation.standalone(terminalModelId(tier)));
+        for (TerminalStyle style : TerminalStyle.all()) {
+            event.register(ModelResourceLocation.standalone(terminalModelId(style)));
         }
     }
 
-    /** Location of the baked OBJ for {@code tier}. */
-    private static ResourceLocation terminalModelId(EnergyTier tier) {
+    /** Location of the baked OBJ for {@code style}. */
+    private static ResourceLocation terminalModelId(TerminalStyle style) {
         return ResourceLocation.fromNamespaceAndPath("stardustindustry",
-                "block/terminal_" + tier.getSerializedName());
+                "block/terminal_" + style.model());
     }
 
     /**
-     * Looks the OBJ for {@code tier} up, or {@code null} when it failed to load. */
-    private static BakedModel modelFor(EnergyTier tier) {
-        BakedModel cached = CACHE.get(tier);
+     * Looks the OBJ for {@code style} up, or {@code null} when it failed to load. */
+    private static BakedModel modelFor(TerminalStyle style) {
+        BakedModel cached = CACHE.get(style);
         if (cached != null) {
             return cached;
         }
         BakedModel model = Minecraft.getInstance().getModelManager()
-                .getModel(ModelResourceLocation.standalone(terminalModelId(tier)));
+                .getModel(ModelResourceLocation.standalone(terminalModelId(style)));
         if (model == Minecraft.getInstance().getModelManager().getMissingModel()) {
             // Do not cache the miss: a resource reload may bring the model back.
             return null;
         }
-        CACHE.put(tier, model);
+        CACHE.put(style, model);
         return model;
     }
 

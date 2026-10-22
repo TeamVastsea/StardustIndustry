@@ -6,6 +6,30 @@
 ## [未发布]
 
 ### 新增
+- **端子按"样式"独立注册，不再按电压等级共用一套模型**：端子物品现在携带
+  `TerminalStyle`（`lv_terminal` / `mv_terminal` / `hv_terminal` / `ehv_terminal`），
+  而不是 `EnergyTier`。样式同时决定三件事：能装进哪种端子座、用哪份 OBJ 与摆放配置、
+  物品注册名。
+  - **为什么改**：此前"一个电压等级 = 一个模型文件 = 一个锚点"，同一电压下再想加第二种端子
+    （母线夹、瓷瓶、树脂绝缘子……）就只能覆盖前一种的美术数值，最后改文件的人赢。
+  - **以后加端子不用改代码**：在 `TerminalStyle` 加一个常量 + 一份 OBJ + 一份
+    `models/terminal/<样式id>.json` + 一个物品，渲染器与线缆代码一行不动。
+    两个样式也可以故意指向同一份摆放配置（外观相同但互不冲突）。
+  - **存档兼容**：端子改为写 NBT 键 `Style`（样式 id）。旧存档的 `Tier=lv` 由
+    `TerminalStyle#fromSaved` 映射到 `lv_terminal`，读入后照常显示，下次保存转成新格式。
+  - 摆放配置文件随之改名：`models/terminal/lv.json` → **`lv_terminal.json`**（其余三级同理）。
+- **线缆锚点成为独立配置项（`anchor`）**：`models/terminal/<样式id>.json` 新增
+  `anchor: {x, y, z}`，只决定**线缆从哪里出来**，与模型的 `offset/rotation/scale/origin`
+  **完全分离**、互不推导。默认 `(0, 0, 0)`，即**模型原点**。
+  - 坐标原点为**模型原点**（OBJ 自己的 `(0,0,0)`，柱子底部中心、贴在背板朝房间的那一面），
+    `x` 沿脸面向右、`y` 向上、`z` 出板朝房间，单位**格**；OBJ 坐标除以 16 即得。
+  - 服务端也要用锚点（接线距离、点击拾取都在服务端），因此数值来源由客户端启动时注入
+    `TerminalGeometry.setAnchorSource(...)`；专用服务端没有这份表时退回同一默认值，
+    `energy/` 包不依赖 `client/` 包。
+- **线缆物品图标按导体与绝缘上色**（`client/CableItemColors`）：17 个线缆物品共用 4 张
+  灰阶贴图，颜色由 `tintindex` + 物品颜色处理器给出——绝缘线灰外皮、裸铜铜色、
+  钢芯铝绞线铝色，与实机管体同源（`CableColor#naturalColor`）。
+  不新建 17 张 PNG，资源包改贴图仍然有效，改配色只需改一处。
 - **LV 端子座 + 端子（电力系统 E2 第一步，网格自由布置）**：按设计文档 §6.3 落地。
   端子拆成两件东西——**端子座**（架子）与**端子**（铜柱）。
   - **端子座**：每级一个方块，`lv_terminal_mount`（4×4 = 16 格）/`mv_terminal_mount`（2×2 = 4 格）/
@@ -109,6 +133,28 @@
   当前没有 AE2 业务实现。
 
 ### 修复
+- **端子摆放配置此前从未被读取过（`models/terminal/*.json` 里的数字全部无效）**：
+  这是「改 `anchor` / `scale` / `offset` 怎么调都没反应」的**真正根因**，且**一直是坏的**，
+  不是后来才出现的。两个 bug 叠加：
+  1. **资源路径少了 `.json` 后缀**。`ResourceLocation` 是不透明的键，不会替你补扩展名；
+     代码请求的是 `stardustindustry:models/terminal/lv`，而磁盘上是 `lv_terminal.json`，
+     于是每次 `getResource` 都返回空、`continue` 静默回退默认姿态。
+     日志里那行 `No pose file for terminal style ...` 就是它，但当时被当成了"文件确实不存在"。
+  2. **配置文件名与样式 id 不一致**。样式重构后存档 id 变成了 `lv_terminal`，
+     但加载器仍用 `style.model()`（值仍是 `lv`）拼文件名，去找已删除的 `lv.json`。
+  现在新增 `TerminalStyle#poseFile()`：**配置文件名跟随样式 id**（`lv_terminal.json`），
+  与存档 key、锚点查询 key 三者统一；`model()` 只负责 `models/block/terminal_lv.obj` 这条 OBJ 路径。
+  加载失败时的日志也改成明确写出"这些数字全被忽略、改用默认值"，不再看起来像无害提示。
+  > 更正：此前本条曾判断"根因不是文件加载，而是 `offset` 应用次序"。`offset` 的次序确实也错了
+  > （见下一条），但那只是次要问题——配置根本没被读进来时，改哪个数都不会有反应。
+- **改 `models/terminal/<tier>.json` 的 `offset` 在非朝北面上方向错乱**：
+  加载链路修复后暴露的第二个问题。`offset` 原先作用在模型自身的 north 坐标系里、
+  **在朝向旋转之前**，所以只有朝北的背板上"z 偏一点”才符合直觉；贴在东西墙上时 `z`
+  会把端子**横着推**，贴在地面/天花板上时 `z` 会把端子**上下推**，而 `x`/`y` 的观感也随之错乱。
+  现在 `offset` 改为**在朝向旋转之后**应用，于是 `x` = 沿脸面向右、`y` = 向上、
+  `z` = 出板朝房间，**六个朝向含义一致**。
+  同时把锚点从"由模型换算出来"改为**独立配置**（见「新增」），
+  移动模型不再连带把线缆一起拽走。
 - **打掉端子座后线缆"复活"（数据没真正删除）**：挖掉端子座时只清了自己这一半记录，
   **远端座子里的那一半没清**。把新座子放回同一坐标，远端记录又能找到端点，线缆就凭空出现了。
   现在拆端子 / 挖座子 / 完整取座都会**两端一起清**并整条掉落；远端区块未加载时，
@@ -195,7 +241,87 @@
   Mekanism 桥接填入 `Chemical.getTranslationKey()`（即 `chemical.mekanism.redstone`），
   直接复用 Mekanism 自带语言文件，显示为「红石 / Redstone」等真实名称；无 `nameKey` 时回退到自建键。
 
+### 修复
+- **端子物品在物品栏里显示品红黑格、名字显示成 `item.stardustindustry.lv`（图标与语言键全部失效）**：
+  `TerminalStyle` 的 `itemName` 在"按样式独立注册"的重构中留成了裸等级名
+  （`lv` / `mv` / `hv` / `ehv`），而资源文件与语言键都是 `lv_terminal` 一套。
+  游戏于是去找 `models/item/lv.json`——不存在——回退到 missing model，
+  同时找不到 `item.stardustindustry.lv` 这个键。
+  日志里是 4 条 `Unable to load model: 'stardustindustry:item/lv' ... FileNotFoundException`。
+  - **修复**：`itemName` 统一为 `lv_terminal` / `mv_terminal` / `hv_terminal` / `ehv_terminal`，
+    与 `models/item/*.json`、`textures/item/terminal_*.png`、语言文件三者对齐。
+  - 给 `itemName()` 补了注释，说明它必须与资源文件名一致——不一致**不会崩溃**，
+    只会静默显示品红黑格，这是它没被及时发现的原因。
+  - 旧存档里**地面上的端子物品**会因注册名变更而失效；装在端子座上的端子不受影响（存的是样式 id）。
+- **线缆锚点 `anchor` 填了数字却看不出变化（原点选错）**：`anchorLocal` 旧实现先加
+  **格子中心**（`+0.5, +0.5, +0.5`）再叠加板面退让，于是
+  1. `anchor = (0,0,0)` 落在方块**角**上而不是任何有意义的位置，与"数值为零即原点"的设计不符；
+  2. `+1` 才等于移动一整个格子，而线缆直径不足 `0.1` 格——微调完全被淹没，
+     看起来就像"配置不生效"。
+  - **与加载链路无关**：日志 `Loaded 4 terminal pose file(s) ...` 已证明配置读入正常，
+    问题纯在公式。
+  - **修复（最终语义）**：`anchorLocal` 现在以 **模型原点** 为原点返回
+    （`footLocal(facing, grid, cell) + basis·anchor`）。
+    `(0,0,0)` 就是 OBJ 自己的 `(0,0,0)`——柱子底部中心、贴在背板朝房间的那一面，
+    也就是建模软件里能**直接看到、直接点到**的那个点。
+  - **为什么不是方块中心**：方块中心在建模软件里不显示，且它与模型根部之间还差一个背板厚度
+    （LV 背板 `1/16`、HV 背板 `2/16`，各等级不同），美术无法凭直觉换算，
+    只能"一点点试"——这正是本次反馈的核心问题。模型原点是唯一可以直接照抄的点。
+  - **多格端子不再需要逐格补偿**：每个格子有自己的模型原点（该格端子的根部），
+    `anchor` 对每一格含义完全相同；`cellCentreLocal` 不再是锚点的一部分。
+  - `TerminalGeometry` 服务端兜底默认值 `anchorOffsetFor` 为 `(0,0,0)`，
+    `TerminalModelConfig.DEFAULT_ANCHOR_Z` 为 `0`。
+  - 四个端子配置文件 `anchor` 回到 `(0,0,0)`，`_anchorNote` 改为"从模型原点量起、按毫米除以 1000"的说明。
+
 ### 变更
+- **项目建模单位统一为毫米，配置里只出现格/米**：`1000 mm = 1 m = 1 格 = 1 个方块`。
+  - `offset / origin / anchor / mirrorOffset` 一律写**格/米**：接线点离根部 `500 mm` 就写 `0.5`。
+  - **OBJ 顶点单位改为数据声明（新增 `objUnitsPerBlock`），默认 `1000`（毫米）**：
+    - 本项目**所有模型均以毫米建模**，所以毫米就是默认值，新模型**不需要写这一项**。
+    - `16` 仅保留给极少数按原版方块模型标尺（方块跨度 `0..16`）绘制的旧文件。
+    - 此前渲染器里写死 `OBJ_UNIT = 1/16`，**该常量已移除**，换算改为
+      `1.0 / objUnitsPerBlock * scale`。
+    - 这一项**只影响顶点换算，不影响配置里的数字**；美术不再需要记任何 OBJ 单位。
+    - 非法值（`0` 或负数）在解析时报错并退回默认姿态，不会静默画出 62.5 倍大的模型。
+  - **四份占位 OBJ 已从方块模型标尺换算为毫米**（顶点 ×62.5）：柱高 `10 → 625 mm`、
+    截面 `3.2 → 200 mm`，在新默认值下**尺寸与原版完全一致**（`625 mm = 0.625 格 = 旧 10/16`）。
+  - 四份配置写明 `objUnitsPerBlock: 1000`，并更新 `_units` / `_objUnitsNote` 说明。
+- **端子摆放配置的单位改为「格」（1.0 = 一整格 = 1 米）**：配置文件
+  （`models/terminal/<样式id>.json`）里的 `offset / origin / anchor / mirrorOffset`
+  不再用 1/16 方块，而是直接写格数，**与建模软件的毫米标尺一一对应**，
+  美术不需要在心里除以 16。
+  - `scale` **保持纯倍率**（`1.0` = 按 OBJ 原样，`0.5` = 一半，`2.0` = 两倍），**不承担单位换算**。
+    中途曾把它设计成"多少 OBJ 单位构成 1 格"（默认 `16`），导致 `scale: 1.0` 被解释成 1/16 倍、
+    端子被放大 16 倍；一个字段两种含义太容易出事，已撤销。
+  - OBJ 顶点自身的换算由 `objUnitsPerBlock` 声明后交给渲染器（默认 `1000` = 毫米，见上一条），
+    代码里不再有写死的 `OBJ_UNIT`；`TerminalGeometry.PLATE_OFFSET` 使用格单位
+    （`7/16`），`footLocal` 不再二次乘单位换算。
+  - **迁移**：旧配置的 `offset / origin / anchor / mirrorOffset` **除以 16** 即为新值
+    （`scale` 不变）。`anchor` 的原点同时由"格子中心"改为"**模型原点**"，
+    所以线缆位置会**一次性**对齐到新语义，之后即以模型原点为准。
+  - 四个端子配置文件已同步更新（`scale: 1.0`、`anchor: (0,0,0)`、`objUnitsPerBlock: 1000`），
+    并在文件内加了单位注释。
+  - **摆放配置改为"以磁盘为准"，改了没反应的情况不再静默**：重载时从默认值重建，
+    文件缺失/损坏**退回默认姿态并打警告**（不再悄悄沿用上一版），并在每次重载时打一行
+    `Loaded N terminal pose file(s) ...` 列出**实际生效的数值**。此前"改了 `scale` 没反应"
+    有两个叠加原因，现在都可从日志直接看出来。
+  - **开发环境"资源改了但游戏没变"的排查路径已写进手册**：Gradle 的输出在
+    `%TEMP%\stardustindustry-build\<模块>\resources\main\`，游戏读的是这份而不是
+    `src/main/resources`；`processResources` 若被判定为 UP-TO-DATE 就不会拷贝，
+    需要 `--rerun-tasks` 强制同步（本轮实测确认过这一点）。
+- **端子的摆放配置与锚点彻底分开，`offset` 语义修正**：
+  - 端子模型一套 `offset / rotation / scale / origin / mirror`，线缆锚点另一套 `anchor`，
+    **两套数值各自独立**（用户明确要求）。端子会反复重导出，而"线缆接在哪一点"是固定的
+    电气位置，绑在一起只会互相拖拽。
+  - `offset` 改为在朝向旋转之后应用，含义固定为"沿脸面右 / 沿脸面向上 / 出板朝房间"。
+    旧版写进 `offset` 的数值如果只是微调，在新语义下方向一致；如果有依赖"模型自身坐标系"
+    的写法，需要按手册 §7.1 的调试口诀重新对一次。
+  - `TerminalGeometry` 删除 `CABLE_STANDOFF` 与旧的 `cableAnchor`，新增
+    `cellCentreLocal` / `anchorLocal` / `anchorWorld`；锚点以**方块中心**为基准，不再以模型原点为基准
+    （最终语义见上方「修复」：数值为零即方块正中心）。
+  - 渲染器的 OBJ 注册、缺失警告、缓存改为按 `TerminalStyle` 而不是 `EnergyTier`。
+  - 线缆物品模型加 `tintindex: 0`，由 `client/CableItemColors` 提供颜色。
+  - 四个端子摆放文件从 `lv.json` 改名为 `lv_terminal.json`（对齐样式 id）。
 - **线缆管体加贴图（不再是一根纯色管子）**：
   - 新增 4 张**灰阶**长条贴图 `textures/block/cable_{bare,acsr,class_1,class_2}.png`（占位 32×128）。
     裸线画**绞合线股的斜向螺旋**，绝缘线画**纵向纹 + 周期性标识带**，ACSR 画更粗的铝股。
@@ -315,6 +441,14 @@
   - 同步更新：注册 ID、Java 常量、语言键、方块/物品模型、blockstate、配方、贴图文件名、文档。
 
 ### 文档
+- **`docs/obj-model-manual.md` 单位章节重写**：§3.1 明确区分**两套单位**——OBJ 顶点是
+  `1 = 1/16 格`，摆放配置是 `1 = 1 格（1 米）`；`scale` 是唯一的桥梁，语义为
+  "多少 OBJ 单位构成 1 格"，默认 `16`。§四、§七的配置示例、字段表、`origin`/`mirror`
+  数值、调试口诀全部换成格单位，并给出"旧值除以 16"的迁移说明。
+- **`docs/obj-model-manual.md` 重写 §七「端子」**：端子按样式独立（`lv_terminal` 等）而不是按等级共用；
+  新增 §7.1 的 `anchor` 说明与「`offset` 在朝向旋转之后应用」的语义修正，
+  调试口诀补上"线缆没接在端子上 → 改 `anchor`，不要改 `offset`"、
+  "模型调好了线却跟着跑 → 说明误改了 `anchor`"两条，并说明"改了 json 没反应"的先查项。
 - 新增 `docs/README.md` 文档索引与权威层级；新增 `docs/module-architecture.md`，记录模块职责、
   依赖图、构建/运行链路、安装组合和扩展准入规则。
 - 重写 `docs/dev-environment.md`，覆盖跨平台首次构建、根任务、四 JAR 发布、联合客户端和验证矩阵；
@@ -325,6 +459,9 @@
   新增 §7「流体看液面，气体看浓度」、§16「气体子系统与 D7.10 落地清单」；
   术语表、方块清单、端口、参数屏、HUD 数据源全部介质化。
 - `docs/terminology.md` 补充介质命名规则（`<medium>_tank_<part>` / 共用件无前缀）。
+- **`docs/electric-power-system-design.md` 同步本轮端子样式与锚点**：§6.3.6 记录
+  "端子按样式独立"（含存档迁移规则）、"模型姿态与锚点完全分离"、"`offset` 在朝向旋转之后应用"
+  以及锚点坐标系与客户端注入来源；OBJ 显式注册一节改为遍历 `TerminalStyle.all()`。
 - **`docs/electric-power-system-design.md` 同步本轮线缆定稿**：
   - §6.3.2 拆除规则改为"**两端一起清 + 整条掉落**"，并记录远端未加载时由
     `TerminalMountBlockEntity#onLoad` 兜底校验、对端未加载不算消失；

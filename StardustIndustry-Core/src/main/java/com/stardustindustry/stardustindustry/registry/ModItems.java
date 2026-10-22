@@ -35,22 +35,36 @@ public final class ModItems {
 
     // ---- terminals ----
     //
-    // One item per voltage tier. A terminal is bolted onto a terminal mount's
-    // grid and becomes one power-grid node there; see
-    // docs/electric-power-system-design.md §6.3.
+    // One item per TERMINAL STYLE, not per voltage tier. The style carries the
+    // tier (which rack accepts it) and the model/anchor it uses, so a second
+    // terminal at the same voltage does not have to share the first one's art.
+    // See TerminalStyle and docs/electric-power-system-design.md §6.3.
+
+    /**
+     * Item per terminal style, filled by {@link #terminal(TerminalStyle)}.
+     *
+     * <p><b>Declared before the constants below on purpose.</b> Java runs static
+     * initialisers in source order, and every constant calls {@link #terminal}
+     * which puts its result into this map. With the map declared after them it is
+     * still {@code null} at that moment and the class dies with a
+     * {@link NullPointerException} during mod construction.</p>
+     */
+    private static final Map<com.stardustindustry.stardustindustry.machine.terminal.TerminalStyle,
+            DeferredItem<com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlock.TerminalItem>>
+            TERMINAL_ITEMS = new LinkedHashMap<>();
 
     /** A low-voltage terminal (220 V / 380 V): bolts onto an LV mount. */
     public static final DeferredItem<com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlock.TerminalItem> LV_TERMINAL =
-            terminal("lv_terminal", com.stardustindustry.stardustindustry.energy.EnergyTier.LV);
+            terminal(com.stardustindustry.stardustindustry.machine.terminal.TerminalStyle.LV);
     /** A medium-voltage terminal (10 kV): bolts onto an MV mount. */
     public static final DeferredItem<com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlock.TerminalItem> MV_TERMINAL =
-            terminal("mv_terminal", com.stardustindustry.stardustindustry.energy.EnergyTier.MV);
+            terminal(com.stardustindustry.stardustindustry.machine.terminal.TerminalStyle.MV);
     /** A high-voltage terminal (110 kV): bolts onto an HV mount. */
     public static final DeferredItem<com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlock.TerminalItem> HV_TERMINAL =
-            terminal("hv_terminal", com.stardustindustry.stardustindustry.energy.EnergyTier.HV);
+            terminal(com.stardustindustry.stardustindustry.machine.terminal.TerminalStyle.HV);
     /** An extra-high-voltage terminal (500 kV): bolts onto an EHV mount. */
     public static final DeferredItem<com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlock.TerminalItem> EHV_TERMINAL =
-            terminal("ehv_terminal", com.stardustindustry.stardustindustry.energy.EnergyTier.EHV);
+            terminal(com.stardustindustry.stardustindustry.machine.terminal.TerminalStyle.EHV);
 
     // ---- cables ----
     //
@@ -121,10 +135,30 @@ public final class ModItems {
 
     /** Terminal items stack high: they are small, cheap-to-make fittings. */
     private static DeferredItem<com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlock.TerminalItem> terminal(
-            String name, com.stardustindustry.stardustindustry.energy.EnergyTier tier) {
-        return ModRegistries.ITEMS.register(name,
-                () -> new com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlock.TerminalItem(
-                        new Item.Properties().stacksTo(64), tier));
+            com.stardustindustry.stardustindustry.machine.terminal.TerminalStyle style) {
+        DeferredItem<com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlock.TerminalItem> item =
+                ModRegistries.ITEMS.register(style.itemName(),
+                        () -> new com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlock.TerminalItem(
+                                new Item.Properties().stacksTo(64), style));
+        TERMINAL_ITEMS.put(style, item);
+        return item;
+    }
+
+    /**
+     * The item for a terminal style.
+     *
+     * <p>Every caller that has a {@link com.stardustindustry.stardustindustry.machine.terminal.TerminalStyle}
+     * — dropping a terminal, taking a whole rack — goes through here, so adding a
+     * style needs no switch statement anywhere.</p>
+     */
+    public static com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlock.TerminalItem terminalFor(
+            com.stardustindustry.stardustindustry.machine.terminal.TerminalStyle style) {
+        DeferredItem<com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlock.TerminalItem> item =
+                TERMINAL_ITEMS.get(style);
+        if (item == null) {
+            throw new IllegalStateException("No item registered for terminal style " + style);
+        }
+        return item.get();
     }
 
     /** Forces class initialisation so the deferred entries above are created. */

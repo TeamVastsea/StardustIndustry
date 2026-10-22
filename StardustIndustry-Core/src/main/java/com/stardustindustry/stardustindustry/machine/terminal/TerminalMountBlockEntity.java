@@ -38,7 +38,7 @@ import org.joml.Vector3f;
 public class TerminalMountBlockEntity extends BlockEntity {
 
     /** Grid cell index to the tier of the terminal bolted there. */
-    private final java.util.Map<Integer, EnergyTier> terminals = new java.util.TreeMap<>();
+    private final java.util.Map<Integer, TerminalStyle> terminals = new java.util.TreeMap<>();
 
     /**
      * Cables leaving this rack, grouped by the cell they leave from.
@@ -177,6 +177,12 @@ public class TerminalMountBlockEntity extends BlockEntity {
 
     /** The tier of the terminal at {@code cell}, or {@code null} when empty. */
     public EnergyTier terminalTier(int cell) {
+        TerminalStyle style = terminals.get(cell);
+        return style == null ? null : style.tier();
+    }
+
+    /** The style of the terminal at {@code cell}, or {@code null} when empty. */
+    public TerminalStyle terminalStyle(int cell) {
         return terminals.get(cell);
     }
 
@@ -185,12 +191,12 @@ public class TerminalMountBlockEntity extends BlockEntity {
         return terminals.size();
     }
 
-    /** Bolts a terminal of {@code tier} onto {@code cell}. */
-    public void addTerminal(int cell, EnergyTier tier) {
+    /** Bolts a terminal of {@code style} onto {@code cell}. */
+    public void addTerminal(int cell, TerminalStyle style) {
         if (!grid().contains(cell) || terminals.containsKey(cell)) {
             return;
         }
-        terminals.put(cell, tier);
+        terminals.put(cell, style);
         sync();
     }
 
@@ -203,8 +209,8 @@ public class TerminalMountBlockEntity extends BlockEntity {
      * removing a piece gives the player its parts back, and a cable is a part.</p>
      */
     public void removeTerminal(int cell, Player player) {
-        EnergyTier tier = terminals.remove(cell);
-        if (tier == null) {
+        TerminalStyle style = terminals.remove(cell);
+        if (style == null) {
             return;
         }
         // Every cable on this post comes off with it: a cable whose end has been
@@ -239,7 +245,7 @@ public class TerminalMountBlockEntity extends BlockEntity {
                 farRack.disconnectCable(cable);
             }
         }
-        ItemStack stack = TerminalMountBlock.TerminalItem.stackFor(tier);
+        ItemStack stack = TerminalMountBlock.TerminalItem.stackFor(style);
         if (player == null) {
             Block.popResource(level, worldPosition, stack);
         } else if (!player.addItem(stack)) {
@@ -251,8 +257,8 @@ public class TerminalMountBlockEntity extends BlockEntity {
     /** Removes every terminal and returns the stacks, for a full-rack take. */
     public java.util.List<ItemStack> drainTerminals() {
         java.util.List<ItemStack> out = new java.util.ArrayList<>(terminals.size());
-        for (EnergyTier tier : terminals.values()) {
-            out.add(TerminalMountBlock.TerminalItem.stackFor(tier));
+        for (TerminalStyle style : terminals.values()) {
+            out.add(TerminalMountBlock.TerminalItem.stackFor(style));
         }
         terminals.clear();
         sync();
@@ -603,10 +609,12 @@ public class TerminalMountBlockEntity extends BlockEntity {
     protected void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.saveAdditional(tag, registries);
         ListTag list = new ListTag();
-        for (Map.Entry<Integer, EnergyTier> entry : terminals.entrySet()) {
+        for (Map.Entry<Integer, TerminalStyle> entry : terminals.entrySet()) {
             CompoundTag cell = new CompoundTag();
             cell.putInt("Cell", entry.getKey());
-            cell.putString("Tier", entry.getValue().getSerializedName());
+            // The style id, not the tier name: a tier may hold several terminals
+            // and each one has its own pose and its own cable anchor.
+            cell.putString("Style", entry.getValue().id());
             list.add(cell);
         }
         tag.put("Terminals", list);
@@ -640,9 +648,12 @@ public class TerminalMountBlockEntity extends BlockEntity {
         ListTag list = tag.getList("Terminals", Tag.TAG_COMPOUND);
         for (int i = 0; i < list.size(); i++) {
             CompoundTag cell = list.getCompound(i);
-            EnergyTier tier = byName(cell.getString("Tier"));
-            if (tier != null) {
-                terminals.put(cell.getInt("Cell"), tier);
+            // "Style" is the current key; "Tier" is what worlds saved before
+            // styles existed, and TerminalStyle#fromSaved maps it back.
+            String saved = cell.contains("Style") ? cell.getString("Style") : cell.getString("Tier");
+            TerminalStyle style = TerminalStyle.fromSaved(saved);
+            if (style != null) {
+                terminals.put(cell.getInt("Cell"), style);
             }
         }
 
@@ -675,15 +686,6 @@ public class TerminalMountBlockEntity extends BlockEntity {
                             new com.stardustindustry.stardustindustry.energy.TerminalEndpoint(
                                     BlockPos.of(saved.getLong("FarPos")), saved.getInt("FarCell"))));
         }
-    }
-
-    private static EnergyTier byName(String name) {
-        for (EnergyTier tier : EnergyTier.values()) {
-            if (tier.getSerializedName().equals(name)) {
-                return tier;
-            }
-        }
-        return null;
     }
 
     @Override

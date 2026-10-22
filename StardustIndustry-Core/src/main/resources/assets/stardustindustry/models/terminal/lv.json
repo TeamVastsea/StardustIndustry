@@ -1,9 +1,0 @@
-{
-  "_comment": "terminal lv pose - origin is the BASE CENTRE of the OBJ, see docs/obj-model-manual.md",
-  "offset": { "x": 0.0, "y": 0.0, "z": 0.0 },
-  "rotation": { "x": 0.0, "y": 0.0, "z": 0.0 },
-  "scale": 1.0,
-  "origin": { "x": 0.0, "y": 0.0, "z": 0.0 },
-  "mirror": "",
-  "mirrorOffset": 0.0
-}

@@ -4,10 +4,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlockEntity;
+import com.stardustindustry.stardustindustry.machine.terminal.TerminalStyle;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import org.joml.Vector3f;
 
 /**
  * Creates and removes cables across both racks they join.
@@ -212,6 +214,14 @@ public final class CableService {
         if (!grid.contains(endpoint.cell())) {
             return null;
         }
-        return TerminalGeometry.cableAnchor(endpoint.pos(), rack.facing(), grid, endpoint.cell());
+        TerminalStyle style = rack.terminalStyle(endpoint.cell());
+        if (style == null) {
+            return null;
+        }
+        // The anchor is a per-style setting (models/terminal/<style>.json), not a
+        // constant: the artist tunes where the wire meets the hardware while
+        // leaving the model's own pose alone.
+        Vector3f offset = TerminalGeometry.anchorOffsetFor(style.model());
+        return TerminalGeometry.anchorWorld(endpoint.pos(), rack.facing(), grid, endpoint.cell(), offset);
     }
 }

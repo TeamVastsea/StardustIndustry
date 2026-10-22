@@ -400,7 +400,6 @@ public class TerminalMountBlock extends Block implements EntityBlock {
         if (!(stack.getItem() instanceof TerminalItem terminalItem)) {
             return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
         }
-
         // -1 means "the cell is impossible, not merely unoccupied": the rack's grid
         // is empty (a grid is never 0x0 in practice, but a future tier could be) or
         // the level reference is gone. -2 means "the ray missed the plate".
@@ -434,7 +433,7 @@ public class TerminalMountBlock extends Block implements EntityBlock {
         }
 
         if (!level.isClientSide()) {
-            mount.addTerminal(cell, terminalItem.tier());
+            mount.addTerminal(cell, terminalItem.style());
             if (!player.getAbilities().instabuild) {
                 stack.shrink(1);
             }
@@ -493,8 +492,9 @@ public class TerminalMountBlock extends Block implements EntityBlock {
      */
     public void collectTerminalDrops(TerminalMountBlockEntity mount, List<ItemStack> out) {
         for (int cell = 0; cell < grid.cellCount(); cell++) {
-            if (mount.hasTerminal(cell)) {
-                out.add(TerminalItem.stackFor(mount.terminalTier(cell)));
+            TerminalStyle style = mount.terminalStyle(cell);
+            if (style != null) {
+                out.add(TerminalItem.stackFor(style));
             }
         }
     }
@@ -538,36 +538,39 @@ public class TerminalMountBlock extends Block implements EntityBlock {
     /**
      * A terminal: the item that bolts onto a mount cell and becomes one node.
      *
-     * <p>Terminals are one item per voltage tier rather than per pin count,
-     * because a mount holds any number of identical pins.</p>
+     * <p>A terminal item carries its {@link TerminalStyle}, not just its voltage
+     * tier. The tier decides which rack accepts it; the style decides which model
+     * is drawn and where its cable is anchored. Keeping the style on the item is
+     * what lets several different terminals exist at one voltage without them
+     * fighting over a single {@code models/terminal/<tier>.json}.</p>
      */
     public static class TerminalItem extends net.minecraft.world.item.Item {
 
-        private final EnergyTier tier;
+        private final TerminalStyle style;
 
-        public TerminalItem(Properties properties, EnergyTier tier) {
+        public TerminalItem(Properties properties, TerminalStyle style) {
             super(properties);
-            this.tier = tier;
+            this.style = style;
+        }
+
+        /** The style of this terminal: model key, anchor and identity. */
+        public TerminalStyle style() {
+            return style;
         }
 
         /** The voltage tier this terminal is rated for. */
         public EnergyTier tier() {
-            return tier;
+            return style.tier();
         }
 
-        /** Builds a stack of one terminal of {@code tier}. */
-        public static ItemStack stackFor(EnergyTier tier) {
-            return new ItemStack(switch (tier) {
-                case LV -> com.stardustindustry.stardustindustry.registry.ModItems.LV_TERMINAL.get();
-                case MV -> com.stardustindustry.stardustindustry.registry.ModItems.MV_TERMINAL.get();
-                case HV -> com.stardustindustry.stardustindustry.registry.ModItems.HV_TERMINAL.get();
-                case EHV -> com.stardustindustry.stardustindustry.registry.ModItems.EHV_TERMINAL.get();
-            });
+        /** Builds a stack of one terminal of {@code style}. */
+        public static ItemStack stackFor(TerminalStyle style) {
+            return new ItemStack(com.stardustindustry.stardustindustry.registry.ModItems.terminalFor(style));
         }
 
         @Override
         public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> tooltip, TooltipFlag flag) {
-            tooltip.add(Component.translatable("item.stardustindustry.terminal.tip.mount", tier.translationKey())
+            tooltip.add(Component.translatable("item.stardustindustry.terminal.tip.mount", tier().translationKey())
                     .withStyle(ChatFormatting.GRAY));
         }
     }

@@ -24,6 +24,13 @@ public class StardustIndustryClient {
     @SubscribeEvent
     static void onClientSetup(FMLClientSetupEvent event) {
         StardustIndustry.LOGGER.info("Stardust Industry client setup complete");
+        // Cables are anchored per terminal STYLE, and the anchor numbers live in
+        // the same pose files the artist edits. The geometry code cannot read
+        // those itself (it also runs on a dedicated server), so the lookup is
+        // injected here once.
+        event.enqueueWork(() -> com.stardustindustry.stardustindustry.energy.TerminalGeometry.setAnchorSource(
+                modelKey -> com.stardustindustry.stardustindustry.client.TerminalModelConfigs
+                        .get(modelKey).anchorOffset()));
         // Give the crusher a spinning rotor. Animation is registered per machine
         // type from the client layer, so the crusher stays a plain common-side
         // class and a machine with no animator simply stands still.
@@ -49,13 +56,15 @@ public class StardustIndustryClient {
      */
     @SubscribeEvent
     static void onRegisterClientReloadListeners(net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent event) {
-        // Terminal posts are OBJ models baked once per tier; a re-exported OBJ or
+        // Terminal posts are OBJ models baked once; a re-exported OBJ or
         // a texture change only shows up after the cache is dropped.
         event.registerReloadListener(
                 (net.minecraft.server.packs.resources.ResourceManagerReloadListener) resourceManager ->
                         com.stardustindustry.stardustindustry.client.TerminalMountRenderer.clearCache());
-        // The pose (offset / rotation / scale) of each terminal OBJ lives in
-        // models/terminal/<tier>.json so the artist can iterate without a rebuild.
+        // The pose (offset / rotation / scale) and the cable anchor of each
+        // terminal STYLE live in models/terminal/<style>.json, so the artist can
+        // iterate without a rebuild. Keyed by style, not tier: two terminals at
+        // one voltage must not overwrite each other's numbers.
         event.registerReloadListener(new com.stardustindustry.stardustindustry.client.TerminalModelConfigs());
     }
 
