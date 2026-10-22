@@ -43,21 +43,20 @@ public final class TerminalGeometry {
 
     private TerminalGeometry() {}
 
-    /**
-     * How far the plate's room-facing surface sits from the block centre, in
-     * <b>blocks</b>, measured <b>against</b> the growth direction.
-     *
-     * <p>Half a block is {@code 0.5} and the plate is {@code 1/16} thick, flush
-     * with the {@code FACING} face, so its inner surface is
-     * {@code 0.5 - 1/16 = 7/16 = 0.4375} blocks out from the centre. Terminals
-     * stand on that surface; the sign at the call site is negative because the
-     * frame's {@code normal} points into the room, away from it.</p>
-     *
-     * <p>Expressed in blocks so this file never mixes units with the pose files
-     * (also blocks); the only 1/16 conversion left is inside
-     * {@code TerminalMountRenderer}, for raw OBJ vertices.</p>
-     */
-    public static final float PLATE_OFFSET = 7.0f / 16.0f;
+    // A constant PLATE_OFFSET = 7/16 used to sit here: the distance from the block
+    // centre to the room-facing surface of a 1/16-thick backplate. Every terminal
+    // was pushed out by it so its foot would "stand on the plate".
+    //
+    // It was removed on the project owner's call. The plate is the ARTIST's
+    // object: a rack may be a thick casting, a busbar frame, a bracket with its
+    // own depth, or a plate mounted flush with the block face. Baking one
+    // particular plate thickness into the engine meant the terminal was either
+    // sunk into the hardware or floating in front of it, and the artist had to
+    // compensate for an invisible 7/16 shift whenever they placed vertices.
+    //
+    // The engine now puts the model origin at the cell centre and adds nothing.
+    // Any stand-off is drawn into the model, or written as "offset" in the pose
+    // file, where it can be seen and tuned.
 
     /**
      * The face frame: {@code {right, up, normal}} per {@code FACING}.
@@ -97,9 +96,27 @@ public final class TerminalGeometry {
     /**
      * The foot of a terminal in <b>block-local</b> coordinates (0..1 per axis).
      *
-     * <p>This is the cell's centre projected onto the plate's room-facing surface:
-     * the cell centre in the grid's u/v frame, carried onto the real face by the
-     * basis, then pulled {@code PLATE_OFFSET} out along the plate's side.</p>
+     * <p>This is <b>the cell's centre on the plate's face</b>: the cell centre in
+     * the grid's {@code u/v} frame, carried onto the real face by the basis, and
+     * nothing else. In particular the renderer adds <b>no stand-off</b> of its
+     * own towards the room.</p>
+     *
+     * <h2>Why there is no automatic plate offset</h2>
+     * <p>This used to pull the foot {@code 7/16} of a block out of the plane, on the
+     * assumption that every rack is a 1/16-thick backplate whose room-facing
+     * surface the terminal must stand on. That assumption belongs to the
+     * <em>art</em>, not to the engine: a rack may be a thick casting, a busbar
+     * frame, a bracket with its own depth, or a plate mounted flush with the block
+     * face — and then the automatic offset either sinks the terminal into the
+     * hardware or leaves it floating in front of it. It also made every model
+     * harder to author, because the artist had to compensate for an invisible
+     * 7/16 shift when placing vertices.</p>
+     *
+     * <p>So the engine places the model origin exactly at the cell centre and
+     * stops there: {@code (0,0,0)} in the artist's file is the middle of the
+     * cell, level with the block face. If a terminal must stand off a thick
+     * plate, that stand-off is drawn into the model (or written as {@code offset}
+     * in the pose file), which is where it can be seen and tuned.</p>
      *
      * <p>This is the <b>art</b> origin: where the terminal renderer starts from,
      * and the point an {@code anchor} is measured from. See {@link #anchorLocal}.</p>
@@ -110,24 +127,19 @@ public final class TerminalGeometry {
         float v = (grid.rowOf(cell) + 0.5f) / grid.rows();
         return new Vector3f(0.5f, 0.5f, 0.5f)
                 .add(new Vector3f(basis[0]).mul(u - 0.5f))
-                .add(new Vector3f(basis[1]).mul(v - 0.5f))
-                .fma(-PLATE_OFFSET, new Vector3f(basis[2]));
+                .add(new Vector3f(basis[1]).mul(v - 0.5f));
     }
 
     /**
      * The cell centre, before any plate stand-off.
      *
-     * <p>Kept for callers that want the plate's middle regardless of how thick
-     * the backplate is. The cable anchor does <b>not</b> use it — see
-     * {@link #anchorLocal}, which measures from {@link #footLocal} instead.</p>
+     * <p>Kept as its own name because callers may ask for "the middle of the
+     * cell" by intent. Since the engine no longer applies a stand-off, this and
+     * {@link #footLocal} return the same point; keeping both makes the intent
+     * readable at the call site.</p>
      */
     public static Vector3f cellCentreLocal(Direction facing, TerminalGrid grid, int cell) {
-        Vector3f[] basis = faceAxes(facing);
-        float u = (grid.columnOf(cell) + 0.5f) / grid.columns();
-        float v = (grid.rowOf(cell) + 0.5f) / grid.rows();
-        return new Vector3f(0.5f, 0.5f, 0.5f)
-                .add(new Vector3f(basis[0]).mul(u - 0.5f))
-                .add(new Vector3f(basis[1]).mul(v - 0.5f));
+        return footLocal(facing, grid, cell);
     }
 
     /**
@@ -192,6 +204,80 @@ public final class TerminalGeometry {
                                        TerminalGrid grid, int cell, Vector3f anchorOffset) {
         Vector3f local = anchorLocal(facing, grid, cell, anchorOffset);
         return new Vector3f(local.x + pos.getX(), local.y + pos.getY(), local.z + pos.getZ());
+    }
+
+    /**
+     * Carries a model-frame box onto a cell, giving a <b>block-local</b> box
+     * (0..1 per axis) that can be turned into a {@code VoxelShape}.
+     *
+     * <h2>The transform must match the renderer exactly</h2>
+     * <p>This applies the same sequence {@code TerminalMountRenderer} applies to a
+     * {@code PoseStack}: cell centre, then the face basis, then
+     * {@code offset}, {@code origin}, rotation, scale and mirror. If the two ever
+     * disagree the collision box sits somewhere other than the visible model —
+     * players walk through a terminal or bump into empty air, which is confusing
+     * in a way the eye cannot resolve. So the renderer and this method must be
+     * changed together; the pose file is the shared truth.</p>
+     *
+     * <h2>Boxes transform as unions of their corners</h2>
+     * <p>Rotating an axis-aligned box does not give a box, so the eight corners
+     * are pushed through the transform and a new axis-aligned box is wrapped
+     * around them. That is what "the smallest rectangle that encloses the model"
+     * means once the model is turned: the box grows to cover the turned shape,
+     * it never clips into it.</p>
+     *
+     * @param min      the lowest corner in the model frame, in blocks
+     * @param max      the highest corner in the model frame, in blocks
+     * @param rotation the pose rotation as a quaternion (degrees already applied)
+     * @param mirrored true when the pose mirrors the model
+     * @param mirror   the mirror axis, {@code "x" / "y" / "z"}, ignored otherwise
+     * @param mirrorOffset the mirror plane's distance from the origin, in blocks
+     */
+    public static org.joml.Vector3f[] placeBox(
+            Direction facing, TerminalGrid grid, int cell,
+            Vector3f min, Vector3f max,
+            Vector3f offset, Vector3f origin,
+            org.joml.Quaternionf rotation, float scale,
+            boolean mirrored, String mirror, float mirrorOffset) {
+
+        Vector3f foot = footLocal(facing, grid, cell);
+        Vector3f[] basis = faceAxes(facing);
+        Vector3f[] corners = {
+                new Vector3f(min.x, min.y, min.z), new Vector3f(max.x, min.y, min.z),
+                new Vector3f(min.x, max.y, min.z), new Vector3f(max.x, max.y, min.z),
+                new Vector3f(min.x, min.y, max.z), new Vector3f(max.x, min.y, max.z),
+                new Vector3f(min.x, max.y, max.z), new Vector3f(max.x, max.y, max.z)
+        };
+
+        Vector3f lo = new Vector3f(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY);
+        Vector3f hi = new Vector3f(Float.NEGATIVE_INFINITY, Float.NEGATIVE_INFINITY, Float.NEGATIVE_INFINITY);
+        for (Vector3f corner : corners) {
+            // The renderer's order: model space -> pivot -> rotation -> scale ->
+            // mirror -> offset -> face basis -> cell centre.
+            Vector3f p = new Vector3f(corner).sub(origin);
+            p.rotate(rotation);
+            p.mul(scale);
+            if (mirrored) {
+                switch (mirror) {
+                    case "x" -> { p.x = -p.x + mirrorOffset; }
+                    case "y" -> { p.y = -p.y + mirrorOffset; }
+                    case "z" -> { p.z = -p.z + mirrorOffset; }
+                    default -> { }
+                }
+            }
+            // offset is in blocks on the plate's own frame (right / up / out).
+            p.add(offset);
+            // The model frame's axes are the plate's: x right, y up, z out.
+            Vector3f world = new Vector3f(
+                    basis[0].x * p.x + basis[1].x * p.y + basis[2].x * p.z,
+                    basis[0].y * p.x + basis[1].y * p.y + basis[2].y * p.z,
+                    basis[0].z * p.x + basis[1].z * p.y + basis[2].z * p.z);
+            world.add(foot);
+
+            lo.min(world);
+            hi.max(world);
+        }
+        return new Vector3f[] {lo, hi};
     }
 
     /**

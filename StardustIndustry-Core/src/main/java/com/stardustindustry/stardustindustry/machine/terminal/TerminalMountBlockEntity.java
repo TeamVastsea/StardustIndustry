@@ -602,6 +602,13 @@ public class TerminalMountBlockEntity extends BlockEntity {
         setChanged();
         if (level != null && !level.isClientSide()) {
             level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), Block.UPDATE_ALL);
+            // A rack's shape depends on which cells hold terminals (see
+            // TerminalMountBlock#shapeFor), but the blockstate itself never
+            // changes — bolting a terminal on is a block-entity change. Without
+            // this the server keeps the cached plate-only shape, so the player
+            // walks straight through the terminal they just placed while a
+            // freshly joined client collides with it: the two sides disagree.
+            level.setBlocksDirty(worldPosition, getBlockState(), getBlockState());
         }
     }
 

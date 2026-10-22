@@ -59,6 +59,12 @@ public class StardustIndustry {
         // Fluid ports swallow a held bucket's right-click before the bucket can
         // empty itself onto the ground.
         NeoForge.EVENT_BUS.register(com.stardustindustry.stardustindustry.machine.PortFluidInteraction.class);
+        // Collision boxes for terminals are parsed from the resource pack (the
+        // plate's block model and the OBJ's extents). A datapack/resource reload
+        // can change either, so the parsed copies are dropped with the manager
+        // that produced them; otherwise an edited plate would keep its old
+        // hitbox until the world restarted.
+        NeoForge.EVENT_BUS.addListener(this::onAddReloadListener);
 
         // Add this mod's content to its creative tab.
         modEventBus.addListener(this::addCreative);
@@ -123,6 +129,27 @@ public class StardustIndustry {
     public void onServerStarting(ServerStartingEvent event) {
         // Do something when the server starts
         LOGGER.info("Stardust Industry server starting");
+    }
+
+    /**
+     * Clears the terminal collision caches on every server-side resource reload.
+     *
+     * <p>Three caches are involved and all three are keyed by resource manager:
+     * the backplate shapes
+     * ({@link com.stardustindustry.stardustindustry.machine.terminal.TerminalPlateShapes}),
+     * the OBJ extents ({@code TerminalModelBounds}) and the pose files
+     * ({@code TerminalPoseReader}). A reload hands in a new manager, which would
+     * already miss the cache, but the entries from the old manager would leak, so
+     * they are dropped here.</p>
+     */
+    private void onAddReloadListener(net.neoforged.neoforge.event.AddReloadListenerEvent event) {
+        event.addListener((net.minecraft.server.packs.resources.ResourceManagerReloadListener) manager -> {
+            com.stardustindustry.stardustindustry.machine.terminal.TerminalPlateShapes.clearCache();
+            com.stardustindustry.stardustindustry.machine.terminal.TerminalModelBounds.clearCache();
+            com.stardustindustry.stardustindustry.machine.terminal.TerminalPoseReader.clearCache();
+            // The rack's assembled shape embeds the three above; it has to go too.
+            com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlock.clearShapeCache();
+        });
     }
 
     /**

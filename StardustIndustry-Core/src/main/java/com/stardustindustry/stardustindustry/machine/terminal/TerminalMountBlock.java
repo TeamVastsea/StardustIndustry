@@ -523,16 +523,97 @@ public class TerminalMountBlock extends Block implements EntityBlock {
      */
     @Override
     protected VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
-        return switch (state.getValue(FACING)) {
-            case NORTH -> Shapes.box(0, 0, 0, 1, 1, 0.125);
-            case SOUTH -> Shapes.box(0, 0, 0.875, 1, 1, 1);
-            case WEST -> Shapes.box(0, 0, 0, 0.125, 1, 1);
-            case EAST -> Shapes.box(0.875, 0, 0, 1, 1, 1);
-            // Plate on the ceiling: bolted to the block's top face.
-            case UP -> Shapes.box(0, 0.875, 0, 1, 1, 1);
-            // Plate on the floor: bolted to the block's underside face.
-            case DOWN -> Shapes.box(0, 0, 0, 1, 0.125, 1);
-        };
+        return shapeFor(state, level, pos);
+    }
+
+    /**
+     * The rack's whole collision volume: the backplate plus every bolted
+     * terminal, as one shape.
+     *
+     * <h2>What each box comes from</h2>
+     * <ul>
+     *   <li><b>Backplate</b> — the {@code elements} of this tier's and facing's
+     *       block model ({@code models/block/<tier>_terminal_mount_<facing>.json}).
+     *       Those models used to be 1/16 thick on all four tiers while the boxes
+     *       here were hard-coded to {@code 0.125} for all six facings, so the
+     *       collision never matched the art: MV/HV/EHV plates are 1.5/2/2.5
+     *       sixteenths thick, and a terminal model that changes thickness picks
+     *       that up with no code change. Reading the model is also why this works
+     *       on a dedicated server — a block model JSON is plain data.</li>
+     *   <li><b>Terminals</b> — the OBJ's vertex extent for the style bolted in
+     *       each cell, carried onto the cell by the same pose transform the
+     *       renderer uses (see {@link TerminalGeometry#placeBox}). This is where
+     *       "the smallest rectangle that encloses the model" comes from: it is
+     *       the art's own bounds, not a guessed column.</li>
+     * </ul>
+     *
+     * <p>An empty cell adds nothing: an empty rack is not a solid cube. The plate
+     * alone still gives the rack a surface to click, and a terminal makes it
+     * bump into the player and the aim ray, which is what tells the player the
+     * click is lined up.</p>
+     *
+     * <p>When a terminal's OBJ cannot be read the cell falls back to a
+     * conservative post-sized box, so a missing file never makes a terminal
+     * walk-through — it just means the box no longer hugs the art.</p>
+     */
+    private VoxelShape shapeFor(BlockState state, BlockGetter level, BlockPos pos) {
+        Direction facing = state.getValue(FACING);
+
+        // Shape queries are hot — the client asks every frame the player looks at
+        // the rack, and the server asks on every movement tick. The assembled
+        // shape only changes when the terminals do, so it is cached per rack
+        // contents. The key lists occupied cells with their styles; a rack with
+        // the same terminals in the same cells is the same shape.
+        StringBuilder key = new StringBuilder(tier.getSerializedName())
+                .append('/').append(facing.getSerializedName()).append('|');
+        if (level.getBlockEntity(pos) instanceof TerminalMountBlockEntity mount) {
+            for (int cell = 0; cell < grid.cellCount(); cell++) {
+                TerminalStyle style = mount.terminalStyle(cell);
+                if (style != null) {
+                    key.append(cell).append(':').append(style.id()).append(',');
+                }
+            }
+        }
+        String cacheKey = key.toString();
+        VoxelShape cached = SHAPE_CACHE.get(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+
+        VoxelShape shape = TerminalPlateShapes.forFacing(this, facing);
+        if (level.getBlockEntity(pos) instanceof TerminalMountBlockEntity mount) {
+            for (int cell = 0; cell < grid.cellCount(); cell++) {
+                TerminalStyle style = mount.terminalStyle(cell);
+                if (style != null) {
+                    shape = Shapes.or(shape, terminalShape(facing, style, cell));
+                }
+            }
+        }
+        // Unbounded growth is not a worry: there are four tiers, six facings and
+        // at most a handful of occupied-cell combinations per world; the map is
+        // also cleared on a resource reload, when the models behind it change.
+        SHAPE_CACHE.put(cacheKey, shape);
+        return shape;
+    }
+
+    /** Assembled rack shapes, keyed by tier, facing and the terminals bolted on. */
+    private static final java.util.Map<String, VoxelShape> SHAPE_CACHE = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** Drops every cached rack shape. Called when the server swaps resource managers. */
+    public static void clearShapeCache() {
+        SHAPE_CACHE.clear();
+    }
+
+    /** One terminal's block-local box, in the shape space of {@code pos}. */
+    private VoxelShape terminalShape(Direction facing, TerminalStyle style, int cell) {
+        float[] box = TerminalPoser.blockLocalBox(facing, grid, cell, style);
+        // The poser hands back a [x0,y0,z0,x1,y1,z1] box in block-local 0..1
+        // space; clamp so a model that pokes out of the block cannot produce a
+        // shape the block engine will not accept.
+        return Shapes.box(
+                Math.max(0.0, Math.min(1.0, box[0])), Math.max(0.0, Math.min(1.0, box[1])),
+                Math.max(0.0, Math.min(1.0, box[2])), Math.max(0.0, Math.min(1.0, box[3])),
+                Math.max(0.0, Math.min(1.0, box[4])), Math.max(0.0, Math.min(1.0, box[5])));
     }
 
     /**

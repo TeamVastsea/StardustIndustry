@@ -6,6 +6,20 @@
 ## [未发布]
 
 ### 新增
+- **端子现在有碰撞体（包裹模型的轴对齐盒子）**：端子放上去后玩家会被它挡住、
+  瞄准射线也会打在它身上，所以拉线、拆放时能看出有没有对准。
+  - **尺寸完全来自美术**：服务端解析端子样式对应的 `.obj`，取**被 `f` 行引用到的顶点**
+    的 min/max 作为包围盒（孤立顶点不计入，不会把盒子撑大），再套用摆放配置的
+    `offset / origin / rotation / scale / mirror / objUnitsPerBlock`，与渲染器使用同一套变换
+    （`TerminalGeometry#placeBox`），所以碰撞盒与画出来的端子严格重合。
+  - **背板碰撞盒也改为读模型**：`models/block/<级>_terminal_mount_<朝向>.json` 的
+    `elements`。此前六个朝向全部写死 `0.125`（=2/16），而四级实际厚度是
+    LV `1/16`、MV `1.5/16`、HV `2/16`、EHV `2.5/16`，碰撞与视觉对不上；现在改方块模型即可。
+  - **空端子座只留背板那么薄**，不是实心方块；拆掉端子后碰撞盒立刻消失。
+  - **两端一致**：碰撞盒始终按**服务端**的资源包计算，避免单人/专用服务器或客户端
+    资源包不同导致命中盒与判定盒不一致；资源重载时清空解析缓存。
+  - **不卡住拉线**：`cellFromHit` 仍按世界坐标投影选格，射线打在端子外壳上照常选中该端子。
+  - 模型改动后碰撞盒自动跟随，美术无需另填数字；手册 §3.7 新增说明。
 - **端子按"样式"独立注册，不再按电压等级共用一套模型**：端子物品现在携带
   `TerminalStyle`（`lv_terminal` / `mv_terminal` / `hv_terminal` / `ehv_terminal`），
   而不是 `EnergyTier`。样式同时决定三件事：能装进哪种端子座、用哪份 OBJ 与摆放配置、
@@ -133,6 +147,36 @@
   当前没有 AE2 业务实现。
 
 ### 修复
+- **端子被引擎自动推出 7/16 格（"原点顶墙"改为不再自动延伸）**：渲染器此前在
+  `TerminalGeometry#footLocal` 里把每个端子的原点沿生长方向推出 `PLATE_OFFSET = 7/16` 格，
+  目的是让脚底"踩在 1/16 厚背板的表面上"。这个假设只对一种背板成立：端子座可能是厚铸件、
+  母线框、带自身厚度的支架，或与方块面齐平的板——自动偏移在这些情况下要么把端子压进硬件，
+  要么让它悬空；而且美术每次摆顶点都要补偿一个看不见的 `7/16`，反而更难做。
+  **现在引擎只把 OBJ 原点放到格子中心（方块中心平面），不再加任何延伸**。
+  需要离墙多远就画进模型，或写进摆放配置的 `offset`——两处都是看得见、改得动的。
+  `PLATE_OFFSET` 常量已删除，`cellCentreLocal` 与 `footLocal` 现在返回同一点。
+  **线缆锚点跟随同一原点**，因此锚点与端子仍然严格对齐。
+- **美术交付的纯色材质显示为紫黑棋盘**：Blender 默认导出的 `.mtl` 只有 `Kd`，
+  没有 `map_Kd`。NeoForge 的 OBJ 加载器
+  （`ObjModel#addQuads` → `UnbakedGeometryHelper#resolveDirtyMaterial`）对
+  `diffuseColorMap == null` **直接返回缺失贴图**，`Kd` 只作为颜色乘在贴图上，
+  没有贴图可乘时完全无效——所以"纯色材质"在 OBJ 管线里也必须有一张真实 PNG。
+  已为 `terminal_lv.mtl` 补上 `map_Kd stardustindustry:block/terminal_lv_body`
+  （贴图已存在，16×16 纯灰）。手册 §6.3 补充了这条限制与正确做法。
+- **LV 端子模型在游戏里"不显示"——单位声明与实际顶点不符**：美术交付的
+  `terminal_lv.obj` 顶点是按**米**写的（`±0.1875`、柱长 `0.625`，即一个 18.75 × 18.75 × 62.5 cm
+  的端子），但摆放配置仍声明 `objUnitsPerBlock: 1000`（毫米制）。渲染器把 `0.1875`
+  当成 `0.1875 毫米`，模型被缩到约 `0.0004` 格，在方块里不可见，表现就和"没加载出来"一样。
+  渲染器与加载链路都没有问题，是**交付物没有遵守毫米约定**。
+  处理：**删除**错误的 `models/block/terminal_lv.obj` 与 `.mtl`，由美术按手册
+  （`1000 mm = 1 格`）重做；缺失期间日志打
+  `Terminal model stardustindustry:block/terminal_lv did not bake`，LV 端子不显示，
+  其余样式与游戏运行不受影响。
+- **`models/terminal/` 下多余的四份 `terminal_<tier>.json`**：它们是 OBJ 包装文件的
+  **重复副本**（真正的包装在 `models/block/<tier>_terminal*.json` 与
+  `models/block/terminal_<tier>.json`），NeoForge 的 `neoforge:obj` 加载器只读
+  `models/block/` 那份，放在 `models/terminal/` 只会让人改错文件。
+  已全部删除，该目录现在只有四份摆放配置 `<样式id>.json`。
 - **端子摆放配置此前从未被读取过（`models/terminal/*.json` 里的数字全部无效）**：
   这是「改 `anchor` / `scale` / `offset` 怎么调都没反应」的**真正根因**，且**一直是坏的**，
   不是后来才出现的。两个 bug 叠加：

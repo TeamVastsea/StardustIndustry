@@ -10,6 +10,6 @@
   "origin": { "x": 0.0, "y": 0.0, "z": 0.0 },
   "mirror": "",
   "mirrorOffset": 0.0,
-  "anchor": { "x": 0.0, "y": 0.0, "z": 0.5 },
+  "anchor": { "x": 0.0, "y": 0.0, "z": 0.4 },
   "objUnitsPerBlock": 1000.0
 }
