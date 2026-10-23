@@ -42,6 +42,28 @@
   - 顺带：不再跨 build 复用 `ByteBufferBuilder`。每次构建用独立的一份，并在一个
     try-with-resources 里释放，避免“上一个模型的 Result 还没归还就开始复用内存”这类
     时序陷阱。
+- **修复：端子不可见——`ModelViewMat` 少乘了相机视图矩阵（真正根因）**。
+  现象：能进世界、能接线，端子位置是空的；没有异常、没有 `did not bake` 警告，
+  `glGetError` 也是 0。诊断日志显示几何全部正常（`quads=25310`、`indexCount=151860`、
+  `batch=1`、shader `rendertype_entity_cutout`），也就是说**画了，但画到了错误的地方**。
+  - **`Matrix4f` 传错了一层**。`VertexBuffer#drawWithShader(modelView, projection, shader)`
+    的 `modelView` 参数是**完整的** model-view，而方块实体渲染器拿到的
+    `PoseStack` **只有** `translate(方块坐标 - 相机坐标)`，**不含相机旋转**——旋转在
+    `RenderSystem#getModelViewMatrix()` 里。
+  - 我一直把 `pose.last().pose()` 直接当 model-view 传给 `setDefaultUniforms`，等于把
+    整个世界少转了一次相机角度。于是端子的顶点被画在一个跟玩家朝向无关的坐标系里，
+    只要视线方向不对，它就整个落在视锥外。几何、索引、shader、深度全都没错，所以
+    既不崩溃也不报 GL 错误，画面只是空着。
+  - **线缆为什么没事**：它走 `MultiBufferSource`，顶点烘焙的是世界坐标，最后由
+    `BufferUploader` 统一乘 `getModelViewMatrix()`。同一条链路，只有端子这段绕开了它。
+  - 现在改成 `ModelViewMat = getModelViewMatrix() × pose`。这也正好等价于旧路径
+    （顶点烘焙 `pose`、绘制时再乘 `view`），所以两种实现画出来的结果逐像素一致。
+  - `getModelViewMatrix()` 返回的是**活引用**，必须拷贝后再 `mul`。
+- **修正上一条的误判**：`d343e6e` 曾把“端子看不见”归因为纹理绑错图集。那个改动
+  （`Sheets.cutoutBlockSheet()`）本身是对的——OBJ 的 UV 确实是方块图集坐标，
+  `entitySolid(模型自己的 sprite)` 也确实采样错——但它**不是不可见的原因**。
+  当时的诊断日志里没有“did not bake”，我据此排除了模型问题，却没有继续往矩阵查。
+  以本条为准。
 - **修复：端子画出来了但看不见（全透明）**。崩溃修好后能进世界、能接线，但端子位置
   是空的。
   - **根因是纹理绑错图集**。OBJ 端子是**烘焙进方块图集**的：`map_Kd` 的贴图被拼进

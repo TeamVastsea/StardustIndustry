@@ -277,15 +277,38 @@ public final class TerminalGeometryCache {
                 renderType, models.size(), models.get(0).quadCount(), shader.getName());
 
         org.joml.Matrix4f projection = com.mojang.blaze3d.systems.RenderSystem.getProjectionMatrix();
+        // The camera rotation lives HERE, not in the block entity's PoseStack.
+        //
+        // A BER's pose only carries the block's offset from the camera; the view
+        // rotation is RenderSystem's model-view matrix. Passing the pose straight
+        // in as ModelViewMat therefore leaves the geometry un-rotated: it is drawn
+        // correctly, with no GL error, in a frame that has nothing to do with where
+        // the player is looking. That is exactly "the terminals are invisible" —
+        // they are somewhere off screen.
+        //
+        // The old per-frame path did not have this problem because it handed the
+        // pose to the MultiBufferSource consumer, baking it into the vertices;
+        // BufferUploader then multiplied by this same model-view matrix at flush
+        // time. Copy the reference too: getModelViewMatrix returns the live object.
+        org.joml.Matrix4f view = new org.joml.Matrix4f(
+                com.mojang.blaze3d.systems.RenderSystem.getModelViewMatrix());
+        once("matrix",
+                "view=[m00={} m02={} m20={} m22={} t=({},{},{})] poseT=({},{},{}) projM00={} projM11={}",
+                view.m00(), view.m02(), view.m20(), view.m22(),
+                view.m30(), view.m31(), view.m32(),
+                matrices.get(0).m30(), matrices.get(0).m31(), matrices.get(0).m32(),
+                projection.m00(), projection.m11());
         net.minecraft.client.Minecraft minecraft = net.minecraft.client.Minecraft.getInstance();
         for (int i = 0; i < models.size(); i++) {
             ModelBuffer model = models.get(i);
+            // view * pose, in that order: convert the model's own placement into
+            // camera space. See the note on `view` above.
+            org.joml.Matrix4f modelView = new org.joml.Matrix4f(view).mul(matrices.get(i));
             // Sets ModelViewMat, ProjMat, ColorModulator, the fog uniforms and the
             // samplers. All of them have to be written: this is not a convenience
-            // wrapper around the matrix. The writes are cached struct stores; the
-            // cost this removes is the per-model render-type setup above, not this.
+            // wrapper around the matrix.
             shader.setDefaultUniforms(
-                    VertexFormat.Mode.QUADS, matrices.get(i), projection, minecraft.getWindow());
+                    VertexFormat.Mode.QUADS, modelView, projection, minecraft.getWindow());
             shader.apply();
             model.vertexBuffer.bind();
             model.vertexBuffer.draw();
