@@ -114,6 +114,8 @@ public class TerminalMountRenderer implements BlockEntityRenderer<TerminalMountB
         List<TerminalGeometryCache.ModelBuffer> batchModels = new ArrayList<>(cellCount);
         List<org.joml.Matrix4f> batchMatrices = new ArrayList<>(cellCount);
         RenderType batchType = null;
+        int styledCells = 0;
+        int missingModels = 0;
 
         // The rack's block models are all one shape, authored for the north face
         // and pre-rotated about the block centre. The terminals must take the
@@ -151,8 +153,10 @@ public class TerminalMountRenderer implements BlockEntityRenderer<TerminalMountB
             if (style == null) {
                 continue;
             }
+            styledCells++;
             BakedModel model = modelFor(style);
             if (model == null) {
+                missingModels++;
                 // A rack can hold a bolted terminal that never appears if its OBJ
                 // failed to bake. Say so once per style rather than every frame,
                 // otherwise the log turns into a wall of the same line.
@@ -256,6 +260,11 @@ public class TerminalMountRenderer implements BlockEntityRenderer<TerminalMountB
             }
             pose.popPose();
         }
+        // Temporary diagnostic: one line per rack, so a single run tells us whether
+        // the terminals were found, baked, and batched at all.
+        TerminalGeometryCache.reportRack(mount.getBlockPos(), facing, cellCount,
+                styledCells, missingModels, batchModels.size());
+
         // One state setup for the whole rack. All cells of one rack share a render
         // type unless two styles use different textures, in which case drawing
         // them under the last style's type would bind the wrong atlas — so only

@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.ByteBufferBuilder;
@@ -117,6 +119,27 @@ public final class TerminalGeometryCache {
     /** Reused for stable quad ordering, matching what the block renderer does. */
     private static final RandomSource RANDOM = RandomSource.create();
 
+    /**
+     * Temporary switch for the "terminals are invisible" investigation.
+     *
+     * <p>Every branch in this class that can silently draw nothing — an empty
+     * quad list, a null shader, a GL error on the draw call — logs once and then
+     * stays quiet, so the log stays readable on a factory wall. Remove this
+     * block, and its call sites, once the cause is found.</p>
+     */
+    private static final Set<String> DIAGNOSED = ConcurrentHashMap.newKeySet();
+
+    private static final org.slf4j.Logger DIAG_LOG =
+            org.slf4j.LoggerFactory.getLogger(TerminalGeometryCache.class);
+
+    /** Logs {@code message} once per {@code tag}. */
+    private static void once(String tag, String message, Object... args) {
+        if (DIAGNOSED.add(tag)) {
+            DIAG_LOG.info("[terminal-diag] " + message, args);
+        }
+    }
+
+
     /** A neutral pose: vertices are written in the model's own local space. */
     private static final PoseStack.Pose IDENTITY = new PoseStack().last();
 
@@ -191,7 +214,7 @@ public final class TerminalGeometryCache {
             // See MAX_BUCKETS: a wholesale clear beats an eviction storm here.
             clear();
         }
-        ModelBuffer built = build(state, model, level, light);
+        ModelBuffer built = build(styleId, state, model, level, light);
         if (built != null) {
             BUILT.put(key, built);
         }
@@ -242,10 +265,16 @@ public final class TerminalGeometryCache {
         net.minecraft.client.renderer.ShaderInstance shader =
                 com.mojang.blaze3d.systems.RenderSystem.getShader();
         if (shader == null) {
+            once("shader-null",
+                    "RENDER TYPE HAS NO SHADER for {} - {} models skipped",
+                    renderType, models.size());
             VertexBuffer.unbind();
             renderType.clearRenderState();
             return;
         }
+        once("draw:" + renderType,
+                "drawBatch type={} models={} firstQuads={} shader={}",
+                renderType, models.size(), models.get(0).quadCount(), shader.getName());
 
         org.joml.Matrix4f projection = com.mojang.blaze3d.systems.RenderSystem.getProjectionMatrix();
         net.minecraft.client.Minecraft minecraft = net.minecraft.client.Minecraft.getInstance();
@@ -261,9 +290,36 @@ public final class TerminalGeometryCache {
             model.vertexBuffer.bind();
             model.vertexBuffer.draw();
         }
+        // A GL error here is the difference between "the draw was issued" and
+        // "the draw happened". An index buffer that is not bound to the VAO, or an
+        // index type that disagrees with the data, shows up as
+        // GL_INVALID_OPERATION (1282) on the first frame and never as an
+        // exception — the screen simply stays empty.
+        int glError = org.lwjgl.opengl.GL11.glGetError();
+        while (glError != 0) {
+            once("gl-error:" + glError,
+                    "GL error 0x{} after drawing {} models of {}",
+                    Integer.toHexString(glError), models.size(), renderType);
+            glError = org.lwjgl.opengl.GL11.glGetError();
+        }
         shader.clear();
         VertexBuffer.unbind();
         renderType.clearRenderState();
+    }
+
+    /**
+     * Temporary: reports one rack's draw inputs, once per rack.
+     *
+     * <p>Distinguishes the three ways a terminal can fail to appear: the loop
+     * found no style to draw ({@code styled} 0), the style's model never baked
+     * ({@code missingModel} &gt; 0), or everything resolved and the problem is
+     * downstream in the GL path ({@code batch} &gt; 0 but nothing on screen).</p>
+     */
+    static void reportRack(net.minecraft.core.BlockPos pos, Direction facing, int cells,
+                           int styled, int missing, int batch) {
+        once("rack:" + pos.asLong(),
+                "rack {} facing={} cells={} styled={} missingModel={} batch={}",
+                pos, facing, cells, styled, missing, batch);
     }
 
     /** Hashes everything from the pose file that changes the drawn shape. */
@@ -283,12 +339,18 @@ public final class TerminalGeometryCache {
     }
 
     /** Tessellates a model once and uploads it to a static VBO. */
-    private static ModelBuffer build(BlockState state, BakedModel model, ClientLevel level,
-                                     int lightValue) {
+    private static ModelBuffer build(String styleId, BlockState state, BakedModel model,
+                                     ClientLevel level, int lightValue) {
         List<BakedQuad> quads = collectQuads(state, model);
         if (quads.isEmpty()) {
+            once("empty:" + styleId,
+                    "build produced NO QUADS for style={} (model={}) - nothing will be drawn",
+                    styleId, model);
             return null;
         }
+        once("built:" + styleId,
+                "build style={} quads={} bounds={} model={}",
+                styleId, quads.size(), boundsOf(quads), model.getClass().getSimpleName());
         int needed = quads.size() * 4 * FORMAT.getVertexSize();
         // A fresh scratch buffer per build. It is a handful of KB to a few MB and
         // is allocated once per style, not per frame — sharing one across builds
@@ -334,8 +396,34 @@ public final class TerminalGeometryCache {
             // passed straight in; wrapping it here would split ownership.
             vb.upload(data);
             VertexBuffer.unbind();
+            once("uploaded:" + styleId,
+                    "uploaded style={} quads={} indexCount={} -> buffer {}",
+                    styleId, quadsWritten, quadsWritten * 6, vb);
             return new ModelBuffer(vb, renderTypeFor(), quadsWritten);
         }
+    }
+
+    /** The quads' extent in model space, to tell "not drawn" from "drawn tiny". */
+    private static String boundsOf(List<BakedQuad> quads) {
+        float minX = Float.MAX_VALUE, minY = Float.MAX_VALUE, minZ = Float.MAX_VALUE;
+        float maxX = -Float.MAX_VALUE, maxY = -Float.MAX_VALUE, maxZ = -Float.MAX_VALUE;
+        for (BakedQuad quad : quads) {
+            int[] v = quad.getVertices();
+            int stride = v.length / 4;
+            for (int i = 0; i < 4; i++) {
+                float x = Float.intBitsToFloat(v[i * stride]);
+                float y = Float.intBitsToFloat(v[i * stride + 1]);
+                float z = Float.intBitsToFloat(v[i * stride + 2]);
+                minX = Math.min(minX, x);
+                minY = Math.min(minY, y);
+                minZ = Math.min(minZ, z);
+                maxX = Math.max(maxX, x);
+                maxY = Math.max(maxY, y);
+                maxZ = Math.max(maxZ, z);
+            }
+        }
+        return String.format("[%.3f %.3f %.3f]..[%.3f %.3f %.3f]",
+                minX, minY, minZ, maxX, maxY, maxZ);
     }
 
     /** Every quad of a model, across the six directions and the unculled bucket. */
