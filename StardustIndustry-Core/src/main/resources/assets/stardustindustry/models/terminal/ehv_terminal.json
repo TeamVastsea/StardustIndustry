@@ -3,7 +3,7 @@
   "_units": "Write BLOCKS/METRES here. The project models in millimetres, so 500 mm of post = 0.5 in this file.",
   "_scaleNote": "scale is a plain multiplier: 1.0 = the size the OBJ was drawn at, 0.5 = half, 2.0 = double. It is NOT a unit conversion.",
   "_anchorNote": "anchor is measured from the MODEL ORIGIN (the OBJ's own 0,0,0, i.e. the foot of the post on the plate), in blocks/metres. (0,0,0) = model origin. x = right along the face, y = up along the face, z = out of the plate into the room. A wire 500 mm up the post is y: 0.5.",
-  "_objUnitsNote": "objUnitsPerBlock is how many OBJ units make one block. This project models in MILLIMETRES, so it is 1000: 1000 mm = 1 m = 1 block. Only a legacy file drawn on the vanilla 0..16 block ruler would say 16. It does NOT affect the numbers above.",
+  "_objUnitsNote": "objUnitsPerBlock is how many OBJ units make one block. THIS FILE'S OBJ IS DRAWN IN BLOCKS/METRES (a block spans 0..1, section 0.45 across, height 1.0), so it is 1.0. A millimetre-modelled file would say 1000. It does NOT affect the numbers above.",
   "offset": { "x": 0.0, "y": 0.0, "z": -0.4375 },
   "rotation": { "x": 0.0, "y": 0.0, "z": 0.0 },
   "scale": 1.0,
@@ -11,5 +11,5 @@
   "mirror": "",
   "mirrorOffset": 0.0,
   "anchor": { "x": 0.0, "y": 0.0, "z": 0.5 },
-  "objUnitsPerBlock": 1000.0
+  "objUnitsPerBlock": 1.0
 }
