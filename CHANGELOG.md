@@ -147,6 +147,22 @@
   当前没有 AE2 业务实现。
 
 ### 修复
+- **端子渲染没有明暗、整片一个颜色**：方块实体渲染器此前调用
+  `ModelBlockRenderer#renderModel`，看起来是"画这个模型"的显然选择，但它
+  **完全不应用逐面明暗**——它把 quad 直接交给
+  `putBulkData(..., 1.0F, 1.0F, 1.0F, ...)`，而让方块顶面比侧面亮的
+  `ClientLevel#getShade(direction, isShade)` 只在 `putQuadData` / `renderQuadList`
+  里被乘上，`renderModel` 绕过了这条路径。
+  - 现象：端子像一块纯色塑料，看不出顶面和侧面，也没有立体感；这不是贴图问题，
+    也不是区块网格的光照问题——用 `renderModel` 的 BER 天生不打光。
+  - 修复：新增 `TerminalMountRenderer#renderShaded`，自己遍历模型 quad，按每张 quad
+    的 `direction` 与 `isShade()` 取与区块网格相同的亮度
+    （`up 1.0`、南北 `0.8`、东西 `0.6`、`down 0.5`），作为
+    `putBulkData` 的逐顶点亮度数组写入。
+  - 只复刻方向明暗，不做环境光遮蔽（AO）：端子立在空处没有可遮蔽的邻居，
+    若按端子座自身算 AO 反而会把背板压暗。
+  - 手册新增 §3.8，说明明暗取决于顶点法线、`f v/vt/vn` 要带第三段索引、
+    `s 0` 与 `s 1` 的区别，以及"整片一个颜色"的排查顺序。
 - **端子被引擎自动推出 7/16 格（"原点顶墙"改为不再自动延伸）**：渲染器此前在
   `TerminalGeometry#footLocal` 里把每个端子的原点沿生长方向推出 `PLATE_OFFSET = 7/16` 格，
   目的是让脚底"踩在 1/16 厚背板的表面上"。这个假设只对一种背板成立：端子座可能是厚铸件、

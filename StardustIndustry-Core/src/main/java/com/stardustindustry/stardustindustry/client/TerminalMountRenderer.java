@@ -236,16 +236,82 @@ public class TerminalMountRenderer implements BlockEntityRenderer<TerminalMountB
                     default -> { }
                 }
             }
-            Minecraft.getInstance().getBlockRenderer().getModelRenderer().renderModel(
-                    pose.last(), cutout, state, model,
-                    1.0f, 1.0f, 1.0f, packedLight, packedOverlay, ModelData.EMPTY, null);
-            pose.popPose();
-        }
+            renderShaded(pose, cutout, state, model, packedLight, packedOverlay, mount.getLevel());
+            pose.popPose();        }
 
         // Cables last, so they are drawn over the posts rather than through their
         // outlines. The rack holds its own half of every cable, and the cable
         // renderer decides which half owns the geometry.
         CableRenderer.instance().render(mount, partialTick, pose, buffers, packedLight, packedOverlay);
+    }
+
+    /**
+     * Draws an OBJ with vanilla-style <b>directional shading</b>.
+     *
+     * <h2>Why not {@code ModelBlockRenderer#renderModel}</h2>
+     * <p>That method looks like "draw this model", so it is the obvious call for a
+     * block entity renderer — and it is what this renderer used. But it applies
+     * <b>no face shading at all</b>: it walks the quads and hands each one to
+     * {@code consumer.putBulkData(..., 1.0F, 1.0F, 1.0F, ...)}. The brightness
+     * that makes a block's top brighter than its sides lives in
+     * {@code ClientLevel#getShade(direction, isShade)} and is multiplied in by
+     * {@code putQuadData} / {@code renderQuadList}, which {@code renderModel}
+     * bypasses.</p>
+     *
+     * <p>So every terminal came out as one flat colour — not "the texture is
+     * wrong", as it first looks, and not a lighting bug in the chunk mesher. A
+     * BER that uses {@code renderModel} simply renders unshaded.</p>
+     *
+     * <h2>What this does instead</h2>
+     * <p>Walks the model's quads itself, asks the level for the same shade factor
+     * the chunk mesher would use for that quad's facing, and passes it as the
+     * per-vertex brightness array of {@code putBulkData}. The result is
+     * indistinguishable from a real block: {@code up} 1.0, north/south 0.8,
+     * east/west 0.6, {@code down} 0.5.</p>
+     *
+     * <p>Only directional shading is reproduced, not ambient occlusion. AO is a
+     * per-vertex term that depends on neighbouring block geometry; a terminal
+     * standing in open air has nothing to occlude it, and computing AO from the
+     * rack's own block would darken the plate it is bolted to.</p>
+     */
+    private static void renderShaded(PoseStack pose, VertexConsumer consumer, BlockState state,
+                                     BakedModel model, int packedLight, int packedOverlay,
+                                     net.minecraft.world.level.Level level) {
+        var clientLevel = level instanceof net.minecraft.client.multiplayer.ClientLevel c ? c : null;
+        PoseStack.Pose entry = pose.last();
+        // One seeded RandomSource for the whole model, exactly as renderModel does,
+        // so the quad order matches what the same model would give elsewhere.
+        net.minecraft.util.RandomSource random = net.minecraft.util.RandomSource.create();
+        for (Direction direction : Direction.values()) {
+            random.setSeed(42L);
+            drawQuads(entry, consumer, model.getQuads(state, direction, random, ModelData.EMPTY, null),
+                    clientLevel, packedLight, packedOverlay);
+        }
+        // Unculled quads. An OBJ usually lands here, because its faces are not
+        // axis-aligned block faces; each quad carries its own direction, so the
+        // shade is read per quad rather than per bucket.
+        random.setSeed(42L);
+        drawQuads(entry, consumer, model.getQuads(state, null, random, ModelData.EMPTY, null),
+                clientLevel, packedLight, packedOverlay);
+    }
+
+    /**
+     * Writes one bucket of quads, each shaded by its own facing.
+     *
+     * <p>Shade is a plain multiplier on the vertex colour, which is where vanilla
+     * puts it. Tint stays white: a terminal OBJ is not a biome-tinted block.</p>
+     */
+    private static void drawQuads(PoseStack.Pose entry, VertexConsumer consumer,
+                                  java.util.List<net.minecraft.client.renderer.block.model.BakedQuad> quads,
+                                  net.minecraft.client.multiplayer.ClientLevel level,
+                                  int packedLight, int packedOverlay) {
+        for (net.minecraft.client.renderer.block.model.BakedQuad quad : quads) {
+            float shade = level == null ? 1.0f : level.getShade(quad.getDirection(), quad.isShade());
+            float[] brightness = {shade, shade, shade, shade};
+            int[] lightmap = {packedLight, packedLight, packedLight, packedLight};
+            consumer.putBulkData(entry, quad, brightness, 1.0f, 1.0f, 1.0f, 1.0f,
+                    lightmap, packedOverlay, true);
+        }
     }
 
     /**
