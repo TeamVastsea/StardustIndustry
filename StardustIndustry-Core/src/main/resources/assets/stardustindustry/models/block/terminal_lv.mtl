@@ -9,5 +9,5 @@ Ks 0.000000 0.000000 0.000000
 Ke 0.000000 0.000000 0.000000
 Ni 1.500000
 d 1.000000
-illum 1
-map_Kd stardustindustry:block/terminal_lv_body
+illum 3
+map_Kd stardustindustry:block/terminal_ehv_body

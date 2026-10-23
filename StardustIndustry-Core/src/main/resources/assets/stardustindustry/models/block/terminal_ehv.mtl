@@ -1,13 +1,12 @@
-# Blender 5.2.2 LTS MTL File: 'None'
+# Blender 5.2.3 LTS MTL File: 'None'
 # www.blender.org
 
 newmtl 材质
-Ns 250.000000
-Ka 1.000000 1.000000 1.000000
-Kd 0.388669 0.129393 0.011168
+Ns 408.286285
+Ka 0.706949 0.706949 0.706949
 Ks 0.500000 0.500000 0.500000
 Ke 0.000000 0.000000 0.000000
-Ni 1.500000
+Ni 1.000000
 d 1.000000
-illum 2
+illum 3
 map_Kd stardustindustry:block/terminal_ehv_body
