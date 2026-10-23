@@ -28,6 +28,20 @@
     `RenderSystem.isOnRenderThread()` 判断是否需要转投到渲染线程再释放 GL 对象；
     上限 512 个桶，超过整体清空（避免光照抖动时的 LRU 抖动）。
   - 手册 §3.9 改写：面数上限按你定的 **300 面**重新给出换算表。
+- **修复：GPU 缓冲首次上传会崩溃（`EXCEPTION_ACCESS_VIOLATION` in `nvoglv64.dll`）**。
+  上一个提交 `1d95b96` 一进世界就在 `glDrawElements` 里原生崩溃，两个独立错误：
+  - **上传前没有绑定自己的 VAO**。`VertexBuffer#upload` 不会自己绑定，它把属性指针和
+    索引绑定写进**当前**挂着的 array object。我的代码在构造完 `VertexBuffer` 后直接
+    `upload()`，于是顶点属性写进了上一个缓冲的 VAO，绘制时读到无效数据。现在上传前
+    先 `vb.bind()`、上传后 `unbind()`。
+  - **批量绘制漏设了 `ProjMat`**。我最初为了省开销，手写 `MODEL_VIEW_MATRIX.set(...)`
+    就 `apply()`，跳过了 `setDefaultUniforms`。但那是**十几个** uniform 的总入口：
+    `ProjMat`、`ColorModulator`、雾参数、采样器全在里面。`ProjMat` 停留在上一帧的值，
+    画面直接错乱。现在每个模型都调 `setDefaultUniforms`（这些只是缓存结构体写入，
+    不是 GL 调用），真正省掉的渲染类型 setup 仍然在循环外。
+  - 顺带：不再跨 build 复用 `ByteBufferBuilder`。每次构建用独立的一份，并在一个
+    try-with-resources 里释放，避免“上一个模型的 Result 还没归还就开始复用内存”这类
+    时序陷阱。
 
 ### 新增
 - **端子现在有碰撞体（包裹模型的轴对齐盒子）**：端子放上去后玩家会被它挡住、

@@ -112,9 +112,6 @@ public final class TerminalGeometryCache {
      */
     private static final int MAX_BUCKETS = 512;
 
-    /** Scratch buffer used while tessellating; render thread only. */
-    private static ByteBufferBuilder scratch = new ByteBufferBuilder(64 * 1024);
-
     /** Built geometry per style + pose + light. Render thread only. */
     private static final Map<BucketKey, ModelBuffer> BUILT = new HashMap<>();
 
@@ -214,11 +211,21 @@ public final class TerminalGeometryCache {
      * draws.</p>
      *
      * <p>Within one rack every terminal shares the render type, so the state is
-     * set up <b>once</b> and then only the model-view matrix changes between
-     * draws. {@code drawWithShader} cannot be used for the middle of a batch
-     * because it re-applies every uniform and then clears them; instead the
-     * matrix uniform is written directly, which is exactly the one value that
-     * differs per terminal.</p>
+     * set up <b>once</b>. Per model the only values that differ are the
+     * model-view matrix and, because {@code setDefaultUniforms} writes them
+     * together, the sampler bindings — but the samplers resolve to the same
+     * texture for every terminal in the batch, so the upload is unchanged.</p>
+     *
+     * <h2>Why {@code setDefaultUniforms} is still called per model</h2>
+     * <p>It sets <b>well over a dozen</b> uniforms, not just the model-view
+     * matrix: {@code ProjMat}, {@code ColorModulator}, fog start/end/colour/shape,
+     * glint alpha and the twelve samplers. An earlier version of this method wrote
+     * only {@code MODEL_VIEW_MATRIX} and called {@code apply()} directly, which
+     * left {@code ProjMat} at whatever the previous draw left behind — the
+     * projection matrix is data the shader cannot do without. The uniforms are
+     * cheap to set (they are cached struct writes, not GL calls); what is
+     * expensive is {@code apply()} and the state setup, and those
+     * <b>are</b> hoisted out of the loop.</p>
      *
      * @param models    buffers to draw, all sharing {@code renderType}
      * @param matrices  matching model-view matrices, index for index with
@@ -240,30 +247,17 @@ public final class TerminalGeometryCache {
             renderType.clearRenderState();
             return;
         }
-        boolean canUseFastPath = shader.MODEL_VIEW_MATRIX != null;
-        if (!canUseFastPath) {
-            // Defensive: if the shader is not the one this render type installed,
-            // fall back to the full per-model path rather than writing uniforms
-            // into whatever happens to be bound.
-            for (int i = 0; i < models.size(); i++) {
-                ModelBuffer model = models.get(i);
-                model.vertexBuffer.bind();
-                model.vertexBuffer.drawWithShader(
-                        matrices.get(i),
-                        com.mojang.blaze3d.systems.RenderSystem.getProjectionMatrix(),
-                        com.mojang.blaze3d.systems.RenderSystem.getShader());
-            }
-            VertexBuffer.unbind();
-            renderType.clearRenderState();
-            return;
-        }
 
-        // Apply the state once for the whole batch. From here on only the
-        // model-view matrix changes, which needs an apply but no restore.
-        shader.apply();
+        org.joml.Matrix4f projection = com.mojang.blaze3d.systems.RenderSystem.getProjectionMatrix();
+        net.minecraft.client.Minecraft minecraft = net.minecraft.client.Minecraft.getInstance();
         for (int i = 0; i < models.size(); i++) {
             ModelBuffer model = models.get(i);
-            shader.MODEL_VIEW_MATRIX.set(matrices.get(i));
+            // Sets ModelViewMat, ProjMat, ColorModulator, the fog uniforms and the
+            // samplers. All of them have to be written: this is not a convenience
+            // wrapper around the matrix. The writes are cached struct stores; the
+            // cost this removes is the per-model render-type setup above, not this.
+            shader.setDefaultUniforms(
+                    VertexFormat.Mode.QUADS, matrices.get(i), projection, minecraft.getWindow());
             shader.apply();
             model.vertexBuffer.bind();
             model.vertexBuffer.draw();
@@ -297,43 +291,52 @@ public final class TerminalGeometryCache {
             return null;
         }
         int needed = quads.size() * 4 * FORMAT.getVertexSize();
-        if (needed > 64 * 1024) {
-            // ByteBufferBuilder grows by doubling up to a 2 MB ceiling; a model
-            // bigger than that would need several result buffers and the upload
-            // would be split. Allocate once at the size this model needs.
-            scratch.close();
-            scratch = new ByteBufferBuilder(needed);
-        } else {
-            scratch.clear();
-        }
+        // A fresh scratch buffer per build. It is a handful of KB to a few MB and
+        // is allocated once per style, not per frame — sharing one across builds
+        // saves nothing measurable but creates a real hazard: ByteBufferBuilder
+        // recycles memory only once every Result from it has been closed, and the
+        // MeshData handed to VertexBuffer#upload owns its Result until upload
+        // returns. A mistimed clear() there would hand already-released memory to
+        // the next model.
+        try (ByteBufferBuilder scratch = new ByteBufferBuilder(Math.max(needed, 1024))) {
+            // Every quad is lit by the same light value: the terminal is a few
+            // centimetres across and stands at one block position. `light` is
+            // already the packed (block << 4 | sky << 20) form that LightTexture
+            // expects, so it is used verbatim rather than split and repacked.
+            int[] lightmap = {lightValue, lightValue, lightValue, lightValue};
+            float[] brightness = new float[4];
 
-        // Every quad is lit by the same light value: the terminal is a few
-        // centimetres across and stands at one block position. `light` is already
-        // the packed (block << 4 | sky << 20) form that LightTexture expects, so
-        // it is used verbatim rather than split and repacked.
-        int[] lightmap = {lightValue, lightValue, lightValue, lightValue};
-        float[] brightness = new float[4];
-
-        BufferBuilder builder = new BufferBuilder(scratch, VertexFormat.Mode.QUADS, FORMAT);
-        for (BakedQuad quad : quads) {
-            float shade = level == null ? 1.0f : level.getShade(quad.getDirection(), quad.isShade());
-            brightness[0] = shade;
-            brightness[1] = shade;
-            brightness[2] = shade;
-            brightness[3] = shade;
-            builder.putBulkData(IDENTITY, quad, brightness, 1f, 1f, 1f, 1f,
-                    lightmap, OverlayTexture.NO_OVERLAY, false);
+            BufferBuilder builder = new BufferBuilder(scratch, VertexFormat.Mode.QUADS, FORMAT);
+            for (BakedQuad quad : quads) {
+                float shade = level == null ? 1.0f : level.getShade(quad.getDirection(), quad.isShade());
+                brightness[0] = shade;
+                brightness[1] = shade;
+                brightness[2] = shade;
+                brightness[3] = shade;
+                builder.putBulkData(IDENTITY, quad, brightness, 1f, 1f, 1f, 1f,
+                        lightmap, OverlayTexture.NO_OVERLAY, false);
+            }
+            MeshData data = builder.build();
+            if (data == null) {
+                return null;
+            }
+            VertexBuffer vb = new VertexBuffer(VertexBuffer.Usage.STATIC);
+            int quadsWritten = data.drawState().vertexCount() / 4;
+            // Bind THIS buffer's vertex array before uploading.
+            //
+            // VertexBuffer#upload does not bind its own VAO: it writes this
+            // model's attribute pointers and index binding into whatever array
+            // object happens to be bound. Uploading without binding first puts
+            // them into the PREVIOUS buffer's VAO, and the draw then reads
+            // garbage — which surfaces as an access violation inside
+            // nvoglv64.dll on glDrawElements rather than as a Java exception.
+            vb.bind();
+            // upload() closes the MeshData itself in its own try/finally, so it is
+            // passed straight in; wrapping it here would split ownership.
+            vb.upload(data);
+            VertexBuffer.unbind();
+            return new ModelBuffer(vb, RenderType.entitySolid(textureOf(model)), quadsWritten);
         }
-        MeshData data = builder.build();
-        if (data == null) {
-            return null;
-        }
-        VertexBuffer vb = new VertexBuffer(VertexBuffer.Usage.STATIC);
-        int quadsWritten = data.drawState().vertexCount() / 4;
-        try (MeshData mesh = data) {
-            vb.upload(mesh);
-        }
-        return new ModelBuffer(vb, RenderType.entitySolid(textureOf(model)), quadsWritten);
     }
 
     /** Every quad of a model, across the six directions and the unculled bucket. */
