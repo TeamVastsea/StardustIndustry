@@ -19,7 +19,6 @@ import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.core.Direction;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.client.model.data.ModelData;
@@ -335,7 +334,7 @@ public final class TerminalGeometryCache {
             // passed straight in; wrapping it here would split ownership.
             vb.upload(data);
             VertexBuffer.unbind();
-            return new ModelBuffer(vb, RenderType.entitySolid(textureOf(model)), quadsWritten);
+            return new ModelBuffer(vb, renderTypeFor(), quadsWritten);
         }
     }
 
@@ -351,9 +350,32 @@ public final class TerminalGeometryCache {
         return out;
     }
 
-    /** The atlas sprite the model draws with, as a render-type texture. */
-    private static ResourceLocation textureOf(BakedModel model) {
-        return model.getParticleIcon(ModelData.EMPTY).contents().name();
+    /**
+     * The render type this cache draws with.
+     *
+     * <h2>Why the block atlas, and not the model's own sprite</h2>
+     * <p>An OBJ terminal is baked <b>into the block atlas</b>: its {@code map_Kd}
+     * texture is stitched into that one big sheet, and its vertex UVs are
+     * <b>atlas coordinates</b> — {@code 0..1} spans the whole atlas, not the
+     * model's little patch of it.</p>
+     *
+     * <p>An earlier version bound {@code entitySolid(model.getParticleIcon())},
+     * i.e. the model's own sprite as a standalone texture. The geometry was there
+     * and correct, but every UV then pointed outside that one sprite and sampled
+     * the empty part of it: the terminals were drawn fully transparent. That is
+     * what "I can wire them up but I cannot see them" looked like.</p>
+     *
+     * <p>The old per-frame path used {@code RenderType.cutout()}, which binds the
+     * block atlas, so its UVs were right by accident of also being the atlas. This
+     * cache needs the atlas <b>and</b> a format it can build itself, so it uses
+     * {@code Sheets.cutoutBlockSheet()} — same {@code NEW_ENTITY} layout as
+     * {@code entitySolid}, same {@code cutout} transparency rule, pointed at the
+     * block atlas. It is also the exact render type vanilla uses for block entity
+     * models that sample the block sheet, so the batching assumptions
+     * (no sorting, depth-tested) match.</p>
+     */
+    private static RenderType renderTypeFor() {
+        return net.minecraft.client.renderer.Sheets.cutoutBlockSheet();
     }
 
     /**
