@@ -485,6 +485,11 @@
   - 同步更新：注册 ID、Java 常量、语言键、方块/物品模型、blockstate、配方、贴图文件名、文档。
 
 ### 文档
+- **新增团队推送约定**（`docs/dev-environment.md` §11）：改完只要能通过 `build` 就直接推送，
+  不必事先征求确认；推送前先 `git fetch` 检查云仓。**仅在出现分歧时**（云仓有本地缺失的提交、
+  `push` 被拒绝、同一文件两边都改过）才询问后再推，且不得擅自 `push --force` 或自行 merge。
+  同时记录提交信息 BOM 的坑：PowerShell 5.1 的 `Out-File -Encoding utf8` 会写 BOM，
+  `git commit -F` 会让标题首字符变成不可见字节，需用 `UTF8Encoding($false)` 写文件。
 - **`docs/obj-model-manual.md` 单位章节重写**：§3.1 明确区分**两套单位**——OBJ 顶点是
   `1 = 1/16 格`，摆放配置是 `1 = 1 格（1 米）`；`scale` 是唯一的桥梁，语义为
   "多少 OBJ 单位构成 1 格"，默认 `16`。§四、§七的配置示例、字段表、`origin`/`mirror`

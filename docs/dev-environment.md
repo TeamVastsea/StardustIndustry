@@ -210,3 +210,37 @@ git diff --check
 - Core 没有第三方模组 API import。
 - 根 `build/libs/` 是四个独立 JAR。
 - 修改依赖或模块时同步更新 [`module-architecture.md`](./module-architecture.md)。
+
+## 11. 推送约定（团队协作）
+
+为了协同开发方便，**改完只要能通过构建就推上去，不需要事先征求确认**：
+
+```powershell
+.\gradlew.bat build --no-configuration-cache   # 必须以 BUILD SUCCESSFUL 为准
+git fetch origin                                # 先看云仓
+git log HEAD..origin/main --oneline             # 应为空
+git add -A
+git commit -m "…"
+git push origin main
+```
+
+- **推送前先 `git fetch` 检查云仓**，然后告知结论即可。
+- **只有在与云仓出现分歧时才需要先询问**，确认后再推：
+  - 云仓有本地缺失的提交（`git log HEAD..origin/main` 非空）；
+  - `git push` 被拒绝（non-fast-forward）；
+  - 同一文件在本地和云仓都被改过。
+  此时**不要**直接 `push --force`，也不要自行 `merge` 掉别人的改动——先报告再决定。
+- 提交前仍然要跑 `build`：推送的门槛是**能通过构建**，不是"改完了"。
+- 提交信息里不要带 BOM。PowerShell 5.1 的 `Out-File -Encoding utf8` 会写 BOM，
+  `git commit -F` 会让标题变成 `﻿端子…`（首字符不可见但会进历史）。
+  正确写法：
+
+  ```powershell
+  $utf8 = New-Object System.Text.UTF8Encoding($false)
+  [System.IO.File]::WriteAllText("$env:TEMP\msg.txt", $msg.Replace("`r`n", "`n"), $utf8)
+  git commit -F "$env:TEMP\msg.txt"
+  ```
+
+- 推送后用 `git ls-remote origin main` 核对远端 SHA 与本地 `HEAD` 一致，
+  这是"GitHub 上确实有了"的证据，比 `git push` 的输出更可靠
+  （PowerShell 会把 git 写到 stderr 的进度信息包装成 `RemoteException`，看着像失败其实不是）。
