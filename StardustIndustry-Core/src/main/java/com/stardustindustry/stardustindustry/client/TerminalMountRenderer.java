@@ -1,10 +1,11 @@
 package com.stardustindustry.stardustindustry.client;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexConsumer;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import com.stardustindustry.stardustindustry.energy.EnergyTier;
@@ -23,7 +24,6 @@ import net.minecraft.client.resources.model.ModelResourceLocation;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.block.state.BlockState;
-import net.neoforged.neoforge.client.model.data.ModelData;
 
 /**
  * Draws one terminal per occupied cell of a {@link TerminalMountBlockEntity}.
@@ -99,11 +99,21 @@ public class TerminalMountRenderer implements BlockEntityRenderer<TerminalMountB
         TerminalGrid grid = mount.grid();
         int cellCount = grid.cellCount();
         if (cellCount <= 0) {
+            // Still draw cables: an empty rack can own cable ends.
+            CableRenderer.instance().render(mount, partialTick, pose, buffers, packedLight, packedOverlay);
             return;
         }
 
         BlockState state = mount.getBlockState();
         Direction facing = state.getValue(TerminalMountBlock.FACING);
+
+        // Every terminal on this rack is collected first and drawn as one batch
+        // per render type. Drawing them one at a time cost a full state setup and
+        // a uniform upload per terminal; on a factory wall that is thousands of
+        // redundant GL calls a frame. See TerminalGeometryCache#drawBatch.
+        List<TerminalGeometryCache.ModelBuffer> batchModels = new ArrayList<>(cellCount);
+        List<org.joml.Matrix4f> batchMatrices = new ArrayList<>(cellCount);
+        RenderType batchType = null;
 
         // The rack's block models are all one shape, authored for the north face
         // and pre-rotated about the block centre. The terminals must take the
@@ -136,7 +146,6 @@ public class TerminalMountRenderer implements BlockEntityRenderer<TerminalMountB
         // plate (1/16 block) so a post can be authored to sit inside it.
         // No scale-to-fit; a missing model only means nothing is drawn.
 
-        VertexConsumer cutout = buffers.getBuffer(RenderType.cutout());
         for (int cell = 0; cell < cellCount; cell++) {
             TerminalStyle style = mount.terminalStyle(cell);
             if (style == null) {
@@ -236,9 +245,39 @@ public class TerminalMountRenderer implements BlockEntityRenderer<TerminalMountB
                     default -> { }
                 }
             }
-            renderShaded(pose, cutout, state, model, packedLight, packedOverlay, mount.getLevel());
-            pose.popPose();        }
-
+            TerminalGeometryCache.ModelBuffer cached = renderShaded(state, style, cfg, model,
+                    packedLight, mount.getLevel());
+            if (cached != null) {
+                // The matrix is copied before popPose, because the batch is drawn
+                // after the loop has finished unwinding.
+                batchModels.add(cached);
+                batchMatrices.add(new org.joml.Matrix4f(pose.last().pose()));
+                batchType = cached.renderType();
+            }
+            pose.popPose();
+        }
+        // One state setup for the whole rack. All cells of one rack share a render
+        // type unless two styles use different textures, in which case drawing
+        // them under the last style's type would bind the wrong atlas — so only
+        // batch when the types agree, and fall back to per-model draws otherwise.
+        if (!batchModels.isEmpty()) {
+            boolean uniformType = true;
+            for (TerminalGeometryCache.ModelBuffer b : batchModels) {
+                if (b.renderType() != batchType) {
+                    uniformType = false;
+                    break;
+                }
+            }
+            if (uniformType) {
+                TerminalGeometryCache.drawBatch(batchModels, batchMatrices, batchType);
+            } else {
+                for (int i = 0; i < batchModels.size(); i++) {
+                    TerminalGeometryCache.drawBatch(
+                            List.of(batchModels.get(i)), List.of(batchMatrices.get(i)),
+                            batchModels.get(i).renderType());
+                }
+            }
+        }
         // Cables last, so they are drawn over the posts rather than through their
         // outlines. The rack holds its own half of every cable, and the cable
         // renderer decides which half owns the geometry.
@@ -246,114 +285,49 @@ public class TerminalMountRenderer implements BlockEntityRenderer<TerminalMountB
     }
 
     /**
-     * Draws an OBJ with vanilla-style <b>directional shading</b>.
+     * Draws one terminal from the GPU cache.
      *
      * <h2>Why not {@code ModelBlockRenderer#renderModel}</h2>
-     * <p>That method looks like "draw this model", so it is the obvious call for a
-     * block entity renderer — and it is what this renderer used. But it applies
-     * <b>no face shading at all</b>: it walks the quads and hands each one to
-     * {@code consumer.putBulkData(..., 1.0F, 1.0F, 1.0F, ...)}. The brightness
-     * that makes a block's top brighter than its sides lives in
+     * <p>That method looks like "draw this model", and it is what this renderer
+     * once used. But it applies <b>no face shading at all</b>: it walks the quads
+     * and hands each one to {@code putBulkData(..., 1.0F, 1.0F, 1.0F, ...)}. The
+     * brightness that makes a block's top brighter than its sides lives in
      * {@code ClientLevel#getShade(direction, isShade)} and is multiplied in by
      * {@code putQuadData} / {@code renderQuadList}, which {@code renderModel}
-     * bypasses.</p>
+     * bypasses. So every terminal came out as one flat colour.</p>
      *
-     * <p>So every terminal came out as one flat colour — not "the texture is
-     * wrong", as it first looks, and not a lighting bug in the chunk mesher. A
-     * BER that uses {@code renderModel} simply renders unshaded.</p>
+     * <h2>Why it no longer tessellates per frame</h2>
+     * <p>The previous fix walked every quad itself, every frame, for every
+     * terminal, and pushed the result through {@code MultiBufferSource}. At three
+     * hundred triangles times a thousand terminals that is tens of megabytes of
+     * vertex data re-written each frame to produce the same bytes as the frame
+     * before — terminals do not animate. {@link TerminalGeometryCache} now does the
+     * tessellation once per style and keeps it in a static VBO; this method only
+     * sets up the transform and issues the draw.</p>
      *
-     * <h2>What this does instead</h2>
-     * <p>Walks the model's quads itself, asks the level for the same shade factor
-     * the chunk mesher would use for that quad's facing, and passes it as the
-     * per-vertex brightness array of {@code putBulkData}. The result is
-     * indistinguishable from a real block: {@code up} 1.0, north/south 0.8,
-     * east/west 0.6, {@code down} 0.5.</p>
+     * <p>What is still per frame, deliberately:</p>
+     * <ul>
+     *   <li><b>the pose</b> — the cache is in local space, so two racks share one
+     *       buffer while sitting in different places and different facings;</li>
+     *   <li><b>the light</b> — baked in, but the cache is keyed on the light value,
+     *       so a terminal only rebuilds when block light around it actually
+     *       changes. Sky light, and therefore nightfall, does not invalidate
+     *       anything. See {@link TerminalGeometryCache} for why vanilla leaves no
+     *       other option;</li>
+     *   <li><b>directional shading</b> is baked in, because it is a constant per
+     *       facing and never changes for a static model.</li>
+     * </ul>
      *
      * <p>Only directional shading is reproduced, not ambient occlusion. AO is a
      * per-vertex term that depends on neighbouring block geometry; a terminal
      * standing in open air has nothing to occlude it, and computing AO from the
      * rack's own block would darken the plate it is bolted to.</p>
      */
-    private static void renderShaded(PoseStack pose, VertexConsumer consumer, BlockState state,
-                                     BakedModel model, int packedLight, int packedOverlay,
+    private static TerminalGeometryCache.ModelBuffer renderShaded(BlockState state, TerminalStyle style,
+                                     TerminalModelConfig cfg, BakedModel model, int packedLight,
                                      net.minecraft.world.level.Level level) {
         var clientLevel = level instanceof net.minecraft.client.multiplayer.ClientLevel c ? c : null;
-        PoseStack.Pose entry = pose.last();
-        // One seeded RandomSource for the whole model, exactly as renderModel does,
-        // so the quad order matches what the same model would give elsewhere.
-        net.minecraft.util.RandomSource random = net.minecraft.util.RandomSource.create();
-        for (Direction direction : Direction.values()) {
-            random.setSeed(42L);
-            drawQuads(entry, consumer, model.getQuads(state, direction, random, ModelData.EMPTY, null),
-                    clientLevel, packedLight, packedOverlay);
-        }
-        // Unculled quads. An OBJ usually lands here, because its faces are not
-        // axis-aligned block faces; each quad carries its own direction, so the
-        // shade is read per quad rather than per bucket.
-        random.setSeed(42L);
-        drawQuads(entry, consumer, model.getQuads(state, null, random, ModelData.EMPTY, null),
-                clientLevel, packedLight, packedOverlay);
-    }
-
-    /**
-     * Writes one bucket of quads, each shaded by its own facing.
-     *
-     * <p>Shade is a plain multiplier on the vertex colour, which is where vanilla
-     * puts it. Tint stays white: a terminal OBJ is not a biome-tinted block.</p>
-     *
-     * <h2>Allocation</h2>
-     * <p>The brightness and lightmap arrays are allocated <b>once per call</b> and
-     * refilled per quad, never per quad. A detailed terminal is tens of thousands
-     * of quads, and this runs every frame for every terminal on screen: allocating
-     * two small arrays per quad turned into roughly 100k short-lived arrays a frame
-     * and the resulting GC churn was visible as a stutter, not as a slow frame.
-     * {@code putBulkData} only reads them during the call, so sharing is safe.</p>
-     *
-     * <h2>Shade lookup</h2>
-     * <p>{@code getShade} is a virtual call into the level that branches on the
-     * dimension's ambient setting, and a detailed model asks it once per quad. There
-     * are only six directions and two {@code isShade} states, so the twelve answers
-     * are taken once per call and reused. Same values, a twelfth of the calls.</p>
-     */
-    private static void drawQuads(PoseStack.Pose entry, VertexConsumer consumer,
-                                  java.util.List<net.minecraft.client.renderer.block.model.BakedQuad> quads,
-                                  net.minecraft.client.multiplayer.ClientLevel level,
-                                  int packedLight, int packedOverlay) {
-        if (quads.isEmpty()) {
-            return;
-        }
-        // [6 directions][2 shade flags]; filled lazily so a bucket that only holds
-        // one facing pays for one lookup.
-        float[][] shadeTable = new float[6][2];
-        boolean[][] shadeKnown = new boolean[6][2];
-        float[] brightness = new float[4];
-        int[] lightmap = {packedLight, packedLight, packedLight, packedLight};
-        for (net.minecraft.client.renderer.block.model.BakedQuad quad : quads) {
-            Direction direction = quad.getDirection();
-            boolean shadeFlag = quad.isShade();
-            int d = direction == null ? -1 : direction.ordinal();
-            float shade;
-            if (level == null) {
-                shade = 1.0f;
-            } else if (d < 0) {
-                // A quad with no direction cannot happen for a baked block model,
-                // but an unshaded answer is the safe reading if it ever does.
-                shade = 1.0f;
-            } else {
-                int s = shadeFlag ? 1 : 0;
-                if (!shadeKnown[d][s]) {
-                    shadeTable[d][s] = level.getShade(direction, shadeFlag);
-                    shadeKnown[d][s] = true;
-                }
-                shade = shadeTable[d][s];
-            }
-            brightness[0] = shade;
-            brightness[1] = shade;
-            brightness[2] = shade;
-            brightness[3] = shade;
-            consumer.putBulkData(entry, quad, brightness, 1.0f, 1.0f, 1.0f, 1.0f,
-                    lightmap, packedOverlay, true);
-        }
+        return TerminalGeometryCache.get(style.id(), state, model, cfg, clientLevel, packedLight);
     }
 
     /**
@@ -600,9 +574,19 @@ public class TerminalMountRenderer implements BlockEntityRenderer<TerminalMountB
         return model;
     }
 
-    /** Drops the model cache. Called on resource reload so re-exported OBJs are picked up. */
+    /**
+     * Drops every renderer cache. Called on resource reload so re-exported OBJs
+     * and re-painted textures are picked up.
+     *
+     * <p>The baked-model map alone is not enough: {@link TerminalGeometryCache}
+     * holds GPU buffers keyed by style and pose, and a re-exported OBJ with an
+     * unchanged pose hash would otherwise keep drawing the old triangles. Both are
+     * cleared here, and the geometry cache's close must run on the render thread
+     * (which a client resource-reload listener does).</p>
+     */
     public static void clearCache() {
         CACHE.clear();
         MISSING_LOGGED.clear();
+        TerminalGeometryCache.clear();
     }
 }
