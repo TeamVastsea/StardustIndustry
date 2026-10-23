@@ -300,15 +300,57 @@ public class TerminalMountRenderer implements BlockEntityRenderer<TerminalMountB
      *
      * <p>Shade is a plain multiplier on the vertex colour, which is where vanilla
      * puts it. Tint stays white: a terminal OBJ is not a biome-tinted block.</p>
+     *
+     * <h2>Allocation</h2>
+     * <p>The brightness and lightmap arrays are allocated <b>once per call</b> and
+     * refilled per quad, never per quad. A detailed terminal is tens of thousands
+     * of quads, and this runs every frame for every terminal on screen: allocating
+     * two small arrays per quad turned into roughly 100k short-lived arrays a frame
+     * and the resulting GC churn was visible as a stutter, not as a slow frame.
+     * {@code putBulkData} only reads them during the call, so sharing is safe.</p>
+     *
+     * <h2>Shade lookup</h2>
+     * <p>{@code getShade} is a virtual call into the level that branches on the
+     * dimension's ambient setting, and a detailed model asks it once per quad. There
+     * are only six directions and two {@code isShade} states, so the twelve answers
+     * are taken once per call and reused. Same values, a twelfth of the calls.</p>
      */
     private static void drawQuads(PoseStack.Pose entry, VertexConsumer consumer,
                                   java.util.List<net.minecraft.client.renderer.block.model.BakedQuad> quads,
                                   net.minecraft.client.multiplayer.ClientLevel level,
                                   int packedLight, int packedOverlay) {
+        if (quads.isEmpty()) {
+            return;
+        }
+        // [6 directions][2 shade flags]; filled lazily so a bucket that only holds
+        // one facing pays for one lookup.
+        float[][] shadeTable = new float[6][2];
+        boolean[][] shadeKnown = new boolean[6][2];
+        float[] brightness = new float[4];
+        int[] lightmap = {packedLight, packedLight, packedLight, packedLight};
         for (net.minecraft.client.renderer.block.model.BakedQuad quad : quads) {
-            float shade = level == null ? 1.0f : level.getShade(quad.getDirection(), quad.isShade());
-            float[] brightness = {shade, shade, shade, shade};
-            int[] lightmap = {packedLight, packedLight, packedLight, packedLight};
+            Direction direction = quad.getDirection();
+            boolean shadeFlag = quad.isShade();
+            int d = direction == null ? -1 : direction.ordinal();
+            float shade;
+            if (level == null) {
+                shade = 1.0f;
+            } else if (d < 0) {
+                // A quad with no direction cannot happen for a baked block model,
+                // but an unshaded answer is the safe reading if it ever does.
+                shade = 1.0f;
+            } else {
+                int s = shadeFlag ? 1 : 0;
+                if (!shadeKnown[d][s]) {
+                    shadeTable[d][s] = level.getShade(direction, shadeFlag);
+                    shadeKnown[d][s] = true;
+                }
+                shade = shadeTable[d][s];
+            }
+            brightness[0] = shade;
+            brightness[1] = shade;
+            brightness[2] = shade;
+            brightness[3] = shade;
             consumer.putBulkData(entry, quad, brightness, 1.0f, 1.0f, 1.0f, 1.0f,
                     lightmap, packedOverlay, true);
         }
@@ -341,9 +383,24 @@ public class TerminalMountRenderer implements BlockEntityRenderer<TerminalMountB
         return CableRenderer.instance().getRenderBoundingBox(mount);
     }
 
+    /**
+     * {@code true} because cables are drawn from this renderer too.
+     *
+     * <p>Registering a second renderer for the same block entity type would
+     * replace this one, so cables are drawn at the end of {@link #render} through
+     * {@link CableRenderer#instance()}. That makes their culling requirements this
+     * renderer's problem: a cable runs many blocks away, and without this flag the
+     * whole rack — and with it the cable — would pop out of existence the moment
+     * the rack's own block left the frustum.</p>
+     *
+     * <p>It does not mean "always tessellate": Minecraft still frustum-tests the
+     * bounding box returned by {@link #getRenderBoundingBox}, which already covers
+     * every cable end. Turning this off to save work on terminals was tried and
+     * would delete long cables, so the saving has to come from the geometry itself
+     * (see the note on detail levels in the manual), not from here.</p>
+     */
     @Override
     public boolean shouldRenderOffScreen(TerminalMountBlockEntity mount) {
-        // The rack itself is one block, but its cables are not.
         return true;
     }
 
