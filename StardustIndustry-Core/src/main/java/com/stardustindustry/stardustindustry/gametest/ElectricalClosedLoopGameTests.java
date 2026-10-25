@@ -38,13 +38,19 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.gametest.framework.GameTestInfo;
+import net.minecraft.gametest.framework.GameTestListener;
+import net.minecraft.gametest.framework.GameTestRunner;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.server.level.TicketType;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.Explosion;
 import net.minecraft.world.level.GameType;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.Blocks;
@@ -61,6 +67,85 @@ public final class ElectricalClosedLoopGameTests {
     private static final String TEMPLATE = "empty";
 
     private ElectricalClosedLoopGameTests() {}
+
+    @GameTest(template = TEMPLATE, timeoutTicks = 100)
+    public static void futureNetworkDataMakesPlayerTerminalRemovalReadOnly(GameTestHelper helper) {
+        BlockPos minedPos = new BlockPos(1, 1, 1);
+        BlockPos wholeRackPos = new BlockPos(3, 1, 1);
+        BlockPos singleTerminalPos = new BlockPos(5, 1, 1);
+        BlockPos explodedRackPos = new BlockPos(7, 1, 1);
+        TerminalMountBlockEntity minedRack = placeRack(
+                helper, minedPos, Direction.NORTH, TerminalStyle.LV, 11);
+        TerminalMountBlockEntity wholeRack = placeRack(
+                helper, wholeRackPos, Direction.NORTH, TerminalStyle.LV, 11);
+        TerminalMountBlockEntity singleTerminalRack = placeRack(
+                helper, singleTerminalPos, Direction.NORTH, TerminalStyle.LV, 11);
+        TerminalMountBlockEntity explodedRack = placeRack(
+                helper, explodedRackPos, Direction.NORTH, TerminalStyle.LV, 11);
+        Player player = helper.makeMockPlayer(GameType.CREATIVE);
+        player.setShiftKeyDown(true);
+
+        ElectricalNetworkSavedData original = ElectricalNetworkSavedData.get(helper.getLevel());
+        CompoundTag futureTag = new CompoundTag();
+        futureTag.putInt("Version", 2);
+        futureTag.putString("FutureOnlyField", "preserve-me");
+        ElectricalNetworkSavedData future = ElectricalNetworkSavedData.load(futureTag, null);
+        helper.getLevel().getDataStorage().set(ElectricalNetworkSavedData.DATA_NAME, future);
+        try {
+            helper.assertTrue(CableService.isReadOnly(helper.getLevel()),
+                    "future electrical data did not put CableService into read-only mode");
+
+            BlockPos minedAbsolute = helper.absolutePos(minedPos);
+            BlockState minedState = helper.getLevel().getBlockState(minedAbsolute);
+            boolean destroyed = minedState.getBlock().onDestroyedByPlayer(
+                    minedState, helper.getLevel(), minedAbsolute, player, false,
+                    helper.getLevel().getFluidState(minedAbsolute));
+            helper.assertTrue(!destroyed, "player mining removed a rack in read-only mode");
+            helper.assertTrue(helper.getLevel().getBlockEntity(minedAbsolute) == minedRack,
+                    "player mining replaced the protected rack block entity");
+            helper.assertValueEqual(minedRack.terminalCount(), 11,
+                    "player mining changed protected rack terminals");
+
+            player.setItemInHand(InteractionHand.MAIN_HAND,
+                    new ItemStack(ModItems.INSTALLATION_TOOL.get()));
+            useRackCenter(helper, wholeRackPos, player);
+            helper.assertTrue(helper.getLevel().getBlockEntity(helper.absolutePos(wholeRackPos)) == wholeRack,
+                    "installation tool removed a whole rack in read-only mode");
+            helper.assertValueEqual(wholeRack.terminalCount(), 11,
+                    "installation tool drained protected rack terminals");
+
+            player.setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY);
+            useRackCenter(helper, singleTerminalPos, player);
+            helper.assertTrue(singleTerminalRack.hasTerminal(10),
+                    "empty-hand shift-click removed a terminal in read-only mode");
+            helper.assertValueEqual(singleTerminalRack.terminalCount(), 11,
+                    "empty-hand shift-click changed protected rack terminals");
+
+            BlockPos explodedAbsolute = helper.absolutePos(explodedRackPos);
+            BlockState explodedState = helper.getLevel().getBlockState(explodedAbsolute);
+            Explosion explosion = new Explosion(helper.getLevel(), null,
+                    explodedAbsolute.getX() + 0.5, explodedAbsolute.getY() + 0.5,
+                    explodedAbsolute.getZ() + 0.5, 4.0f, false,
+                    Explosion.BlockInteraction.DESTROY, List.of(explodedAbsolute));
+            explodedState.onExplosionHit(helper.getLevel(), explodedAbsolute, explosion,
+                    (stack, dropPos) -> {});
+            helper.assertTrue(helper.getLevel().getBlockEntity(explodedAbsolute) == explodedRack,
+                    "explosion removed a rack in read-only mode");
+            helper.assertValueEqual(explodedRack.terminalCount(), 11,
+                    "explosion changed protected rack terminals");
+
+            CompoundTag preserved = future.save(new CompoundTag(), null);
+            helper.assertValueEqual(preserved.getInt("Version"), 2,
+                    "read-only interaction downgraded the future data version");
+            helper.assertValueEqual(preserved.getString("FutureOnlyField"), "preserve-me",
+                    "read-only interaction lost an unknown future field");
+            helper.assertTrue(!future.isDirty(),
+                    "blocked player interactions dirtied future electrical data");
+        } finally {
+            helper.getLevel().getDataStorage().set(ElectricalNetworkSavedData.DATA_NAME, original);
+        }
+        helper.succeed();
+    }
 
     @GameTest(template = TEMPLATE, timeoutTicks = 100)
     public static void offhandMeterOwnsEmptyMainHandInteractions(GameTestHelper helper) {
@@ -124,8 +209,8 @@ public final class ElectricalClosedLoopGameTests {
             PowerDemoBuilder.BuildReport first = PowerDemoBuilder.build(helper.getLevel());
             StorageStationBlockEntity storage = requireDemoStorage(
                     helper, new BlockPos(66, 2, -9));
-            helper.assertValueEqual(storage.energy().storedJoules(), 301_500L,
-                    "demo storage reserve is not the intended roughly 45-second crusher supply");
+            helper.assertValueEqual(storage.energy().storedJoules(), 284_750L,
+                    "demo storage reserve is not the intended roughly 42.5-second crusher supply");
             ElectricalDeviceBlockEntity feConverter = requireDemoDevice(
                     helper, new BlockPos(68, 1, 3));
             helper.assertValueEqual(feConverter.telemetryState().fault(), FaultKind.OPEN_SWITCH,
@@ -138,6 +223,159 @@ public final class ElectricalClosedLoopGameTests {
             helper.succeed();
         } finally {
             PowerDemoBuilder.reset(helper.getLevel());
+        }
+    }
+
+    @GameTest(template = TEMPLATE, batch = "powerDemoProduction", timeoutTicks = 1_600)
+    public static void demoProductionLineRunsStorageTakeoverAndPausesAtEmpty(GameTestHelper helper) {
+        Runnable cleanup = registerDemoCleanup(helper);
+        runWithCleanup(cleanup, () -> {
+            forceDemoChunks(helper, true);
+            PowerDemoBuilder.build(helper.getLevel());
+            ElectricalDeviceBlockEntity generator = requireDemoDevice(
+                    helper, new BlockPos(0, 1, 0));
+            StorageStationBlockEntity storage = requireDemoStorage(
+                    helper, new BlockPos(66, 2, -9));
+            BlockPos crusherPos = PowerDemoBuilder.ORIGIN.offset(68, 1, 8);
+            Object blockEntity = helper.getLevel().getBlockEntity(crusherPos);
+            helper.assertTrue(blockEntity instanceof CrusherBlockEntity,
+                    "demo crusher was not created at " + crusherPos);
+            CrusherBlockEntity crusher = (CrusherBlockEntity) blockEntity;
+            RecipeRunnerModule runner = crusher.modules().get(RecipeRunnerModule.class);
+            helper.assertTrue(runner != null, "demo crusher has no recipe runner");
+
+            int[] phase = {0};
+            int[] phaseTick = {0};
+            long[] chargeAtTakeover = {0L};
+            double[] workAtTakeover = {0.0};
+            double[] workAtEmpty = {0.0};
+            int startTick = helper.getLevel().getServer().getTickCount();
+            helper.onEachTick(() -> runWithCleanup(cleanup, () -> {
+                int now = helper.getLevel().getServer().getTickCount();
+                double work = countItem(crusher, ModItems.CRUSHED_IRON.get())
+                        + runner.progressFraction();
+                if (phase[0] == 0 && runner.isRunning() && runner.progressFraction() > 0.0f) {
+                    BlockPos mvStart = PowerDemoBuilder.ORIGIN.offset(9, 1, 0);
+                    BlockPos mvEnd = PowerDemoBuilder.ORIGIN.offset(57, 1, 0);
+                    List<CableConnection> mvRuns = ElectricalNetworkSavedData.get(helper.getLevel())
+                            .records().stream()
+                            .map(ElectricalNetworkSavedData.CableRecord::connection)
+                            .filter(cable -> Set.of(cable.a().pos(), cable.b().pos())
+                                    .equals(Set.of(mvStart, mvEnd)))
+                            .toList();
+                    helper.assertValueEqual(mvRuns.size(), 3,
+                            "demo does not contain the three 48-block MV conductors");
+                    for (CableConnection cable : mvRuns) {
+                        var energized = ElectricalGridService.energizedCable(
+                                helper.getLevel(), cable.runId());
+                        helper.assertTrue(energized != null && energized.currentAmps() > 0.0,
+                                "demo MV conductor carried no current");
+                        helper.assertValueEqual(energized.volts(), EnergyTier.MV.volts(),
+                                "demo long-distance conductor was not energized at MV");
+                    }
+                    chargeAtTakeover[0] = storage.energy().storedJoules();
+                    workAtTakeover[0] = work;
+                    generator.setSwitchClosed(false);
+                    phase[0] = 1;
+                    phaseTick[0] = now;
+                } else if (phase[0] == 1
+                        && storage.energy().storedJoules() < chargeAtTakeover[0]
+                        && work > workAtTakeover[0]) {
+                    helper.assertTrue(storage.energy().storedJoules() > 0L,
+                            "demo storage was empty before takeover was observed");
+                    phase[0] = 2;
+                    phaseTick[0] = now;
+                } else if (phase[0] == 2 && storage.energy().storedJoules() == 0L
+                        && crusher.energy().storedJoules() == 0L && runner.isRunning()) {
+                    workAtEmpty[0] = work;
+                    phase[0] = 3;
+                    phaseTick[0] = now;
+                } else if (phase[0] == 3 && now - phaseTick[0] >= 5) {
+                    helper.assertValueEqual(work, workAtEmpty[0],
+                            "demo crusher did not preserve its exact progress after storage exhaustion");
+                    helper.assertTrue(runner.isRunning(),
+                            "demo crusher discarded its reserved recipe after power loss");
+                    helper.assertValueEqual(storage.energy().storedJoules(), 0L,
+                            "demo storage regained energy with its generator open");
+                    helper.succeed();
+                    return;
+                }
+                if (now - startTick == 1_500) {
+                    EnergyPortBlockEntity storagePort = helper.getLevel().getBlockEntity(
+                            PowerDemoBuilder.ORIGIN.offset(68, 2, -9)) instanceof EnergyPortBlockEntity port
+                            ? port : null;
+                    EnergyPortBlockEntity crusherPort = helper.getLevel().getBlockEntity(
+                            PowerDemoBuilder.ORIGIN.offset(67, 1, 8)) instanceof EnergyPortBlockEntity port
+                            ? port : null;
+                    helper.fail("demo stalled: phase=" + phase[0]
+                            + ", storageJ=" + storage.energy().storedJoules()
+                            + ", bufferJ=" + crusher.energy().storedJoules()
+                            + ", running=" + runner.isRunning()
+                            + ", progress=" + runner.progressFraction()
+                            + ", storageFault=" + (storagePort == null
+                                    ? "missing" : storagePort.gridState().fault())
+                            + ", crusherFault=" + (crusherPort == null
+                                    ? "missing" : crusherPort.gridState().fault()));
+                }
+            }));
+        });
+    }
+
+    private static Runnable registerDemoCleanup(GameTestHelper helper) {
+        boolean[] cleaned = {false};
+        Runnable cleanup = () -> {
+            if (cleaned[0]) {
+                return;
+            }
+            cleaned[0] = true;
+            try {
+                PowerDemoBuilder.reset(helper.getLevel());
+            } finally {
+                forceDemoChunks(helper, false);
+            }
+        };
+        helper.testInfo.addListener(new GameTestListener() {
+            @Override
+            public void testStructureLoaded(GameTestInfo testInfo) {}
+
+            @Override
+            public void testPassed(GameTestInfo test, GameTestRunner runner) {
+                cleanup.run();
+            }
+
+            @Override
+            public void testFailed(GameTestInfo test, GameTestRunner runner) {
+                cleanup.run();
+            }
+
+            @Override
+            public void testAddedForRerun(
+                    GameTestInfo oldTest, GameTestInfo newTest, GameTestRunner runner) {
+                cleanup.run();
+            }
+        });
+        return cleanup;
+    }
+
+    private static void runWithCleanup(Runnable cleanup, Runnable action) {
+        try {
+            action.run();
+        } catch (RuntimeException | Error failure) {
+            try {
+                cleanup.run();
+            } catch (RuntimeException | Error cleanupFailure) {
+                failure.addSuppressed(cleanupFailure);
+            }
+            throw failure;
+        }
+    }
+
+    private static void forceDemoChunks(GameTestHelper helper, boolean forced) {
+        for (int chunkX = -1; chunkX <= 4; chunkX++) {
+            for (int chunkZ = -2; chunkZ <= 1; chunkZ++) {
+                helper.getLevel().getChunkSource().updateChunkForced(
+                        new ChunkPos(chunkX, chunkZ), forced);
+            }
         }
     }
 
@@ -219,36 +457,382 @@ public final class ElectricalClosedLoopGameTests {
         });
     }
 
-    @GameTest(template = TEMPLATE)
-    public static void unloadedFarCableCanBeRecoloredAndCut(GameTestHelper helper) {
-        BlockPos near = helper.absolutePos(new BlockPos(1, 1, 1));
-        BlockPos far = near.offset(512, 0, 0);
-        CableConnection original = CableConnection.of(
-                CableAmpacity.A150,
-                CableInsulation.CLASS_1,
-                new TerminalEndpoint(near, 0),
-                new TerminalEndpoint(far, 0));
-        CableRunId id = CableRunId.of(original);
+    @GameTest(template = TEMPLATE, batch = "chunkLifecycle", timeoutTicks = 1_200)
+    public static void cableSurvivesRemoteChunkUnloadAndRestoresPower(GameTestHelper helper) {
+        ChunkPos sourceChunk = new ChunkPos(200, 200);
+        BlockPos absoluteSourcePos = new BlockPos((sourceChunk.x << 4) + 14, 64,
+                (sourceChunk.z << 4) + 8);
+        BlockPos absoluteSourceRackPos = absoluteSourcePos.east();
+        BlockPos firstRelayRackPos = new BlockPos(204 << 4, 64, (200 << 4) + 8);
+        List<BlockPos> relayRackPositions = List.of(
+                firstRelayRackPos,
+                firstRelayRackPos.offset(60, 0, 0),
+                firstRelayRackPos.offset(120, 0, 0));
+        BlockPos absoluteRemoteRackPos = firstRelayRackPos.offset(180, 0, 0);
+        BlockPos absoluteRemoteLoadPos = absoluteRemoteRackPos.east();
+        ChunkPos remoteChunk = new ChunkPos(absoluteRemoteRackPos);
+        List<ChunkPos> fixtureChunks = List.of(
+                sourceChunk,
+                new ChunkPos(relayRackPositions.get(0)),
+                new ChunkPos(relayRackPositions.get(1)),
+                new ChunkPos(relayRackPositions.get(2)),
+                remoteChunk);
+        List<ChunkPos> unloadChunks = fixtureChunks.subList(1, fixtureChunks.size());
+
+        for (ChunkPos chunk : fixtureChunks) {
+            helper.getLevel().setChunkForced(chunk.x, chunk.z, false);
+            setChunkLifecycleTicket(helper, chunk, true);
+            helper.getLevel().getChunk(chunk.x, chunk.z);
+        }
+
+        List<CableConnection> cables = new ArrayList<>();
+        List<CableConnection> remoteSegmentCables = new ArrayList<>();
+        List<TerminalMountBlockEntity> relayRacks = new ArrayList<>();
+        Runnable cleanup = () -> {
+            for (ChunkPos chunk : fixtureChunks) {
+                setChunkLifecycleTicket(helper, chunk, true);
+                helper.getLevel().getChunk(chunk.x, chunk.z);
+            }
+            try {
+                CableService.disconnectAll(helper.getLevel(), absoluteSourceRackPos);
+                relayRackPositions.forEach(pos ->
+                        CableService.disconnectAll(helper.getLevel(), pos));
+                CableService.disconnectAll(helper.getLevel(), absoluteRemoteRackPos);
+                helper.getLevel().removeBlock(absoluteSourceRackPos, false);
+                helper.getLevel().removeBlock(absoluteSourcePos, false);
+                relayRackPositions.forEach(pos ->
+                        helper.getLevel().removeBlock(pos, false));
+                // Clean the converter used at the old four-chunk fixture location.
+                helper.getLevel().removeBlock(firstRelayRackPos.east(), false);
+                helper.getLevel().removeBlock(absoluteRemoteRackPos, false);
+                helper.getLevel().removeBlock(absoluteRemoteLoadPos, false);
+            } finally {
+                fixtureChunks.forEach(chunk ->
+                        setChunkLifecycleTicket(helper, chunk, false));
+            }
+        };
+
         ElectricalNetworkSavedData data = ElectricalNetworkSavedData.get(helper.getLevel());
+        ElectricalDeviceBlockEntity[] source = {null};
+        TerminalMountBlockEntity[] sourceRack = {null};
+        TerminalMountBlockEntity[] originalRemoteRack = {null};
+        ElectricalDeviceBlockEntity[] originalRemoteLoad = {null};
+        CableRunId[] observedRun = {null};
+        CableRunId[] sourceBoundaryRun = {null};
+        int[] phase = {-1};
+        int[] phaseStartedAt = {0};
+        int[] elapsedTicks = {0};
 
-        // Seed a record without loading the remote chunk; all player-visible
-        // mutations below still go through the authoritative CableService.
-        data.disconnect(id);
-        helper.assertTrue(data.connect(original).changed(), "fixture cable was not created");
-        helper.assertFalse(helper.getLevel().hasChunkAt(far), "far fixture chunk unexpectedly loaded");
+        helper.onEachTick(() -> {
+            try {
+                int now = ++elapsedTicks[0];
+                if (now >= 1_100) {
+                    var remoteHolder = helper.getLevel().getChunkSource().chunkMap
+                            .getVisibleChunkIfPresent(remoteChunk.toLong());
+                    helper.fail("chunk lifecycle stalled: phase=" + phase[0]
+                            + ", sourceTicking=" + helper.getLevel().shouldTickBlocksAt(
+                                    absoluteSourcePos)
+                            + ", remoteTicking=" + helper.getLevel().shouldTickBlocksAt(
+                                    absoluteRemoteRackPos)
+                            + ", sourceChunk=" + helper.getLevel().hasChunk(
+                                    sourceChunk.x, sourceChunk.z)
+                            + ", remoteChunk=" + helper.getLevel().hasChunk(
+                                    remoteChunk.x, remoteChunk.z)
+                            + ", oldRackRemoved=" + (originalRemoteRack[0] != null
+                                    && originalRemoteRack[0].isRemoved())
+                            + ", oldLoadRemoved=" + (originalRemoteLoad[0] != null
+                                    && originalRemoteLoad[0].isRemoved())
+                            + ", holder=" + (remoteHolder == null ? "null"
+                                    : "ticket=" + remoteHolder.getTicketLevel()
+                                            + "/gen=" + remoteHolder.getGenerationRefCount()
+                                            + "/saveDone=" + remoteHolder.getSaveSyncFuture().isDone()
+                                            + "/ready=" + remoteHolder.isReadyForSaving())
+                            + ", cableLive=" + (observedRun[0] != null
+                                    && ElectricalGridService.energizedCable(
+                                            helper.getLevel(), observedRun[0]) != null));
+                }
 
-        CableMutationResult recolored = CableService.recolorDetailed(
-                helper.getLevel(), original, CableColor.ofDyeIndex(14));
-        helper.assertTrue(recolored.changed(), "unloaded far end blocked cable recoloring");
-        helper.assertFalse(helper.getLevel().hasChunkAt(far), "recolor loaded the far chunk");
+                if (phase[0] == -1) {
+                    if (!isChunkActiveNow(helper, absoluteSourcePos)
+                            || !isChunkActiveNow(helper, absoluteRemoteRackPos)) {
+                        return;
+                    }
 
-        CableMutationResult removed = CableService.disconnectDetailed(helper.getLevel(), recolored.cable());
-        helper.assertTrue(removed.changed(), "unloaded far end blocked cable removal");
-        helper.assertTrue(data.hasTombstone(id), "cable removal did not create a migration tombstone");
-        helper.assertValueEqual(data.migrateLegacy(original).status(), CableMutationResult.Status.TOMBSTONED,
-                "an unloaded legacy endpoint revived a removed cable");
-        helper.assertFalse(helper.getLevel().hasChunkAt(far), "disconnect loaded the far chunk");
-        helper.succeed();
+                    // The GameTest level survives Gradle invocations. Remove fixtures and
+                    // authoritative runs left behind by a previous failed invocation.
+                    CableService.disconnectAll(helper.getLevel(), absoluteSourceRackPos);
+                    relayRackPositions.forEach(pos ->
+                            CableService.disconnectAll(helper.getLevel(), pos));
+                    CableService.disconnectAll(helper.getLevel(), absoluteRemoteRackPos);
+                    helper.getLevel().removeBlock(absoluteSourceRackPos, false);
+                    helper.getLevel().removeBlock(absoluteSourcePos, false);
+                    relayRackPositions.forEach(pos ->
+                            helper.getLevel().removeBlock(pos, false));
+                    helper.getLevel().removeBlock(firstRelayRackPos.east(), false);
+                    helper.getLevel().removeBlock(absoluteRemoteRackPos, false);
+                    helper.getLevel().removeBlock(absoluteRemoteLoadPos, false);
+
+                    source[0] = placeAbsoluteDevice(helper, absoluteSourcePos,
+                            ModBlocks.CREATIVE_POWER_SOURCE.get(), Direction.EAST);
+                    sourceRack[0] = placeAbsoluteRack(
+                            helper, absoluteSourceRackPos, Direction.WEST, TerminalStyle.LV, 4);
+                    originalRemoteLoad[0] = placeAbsoluteDevice(helper, absoluteRemoteLoadPos,
+                            ModBlocks.LV_FE_CONVERTER.get(), Direction.WEST);
+                    originalRemoteLoad[0].cycleConfiguration(); // Native electricity -> FE.
+                    originalRemoteRack[0] = placeAbsoluteRack(
+                            helper, absoluteRemoteRackPos, Direction.EAST, TerminalStyle.LV, 4);
+                    relayRacks.clear();
+                    for (BlockPos relayPos : relayRackPositions) {
+                        relayRacks.add(placeAbsoluteRack(
+                                helper, relayPos, Direction.NORTH, TerminalStyle.LV, 4));
+                    }
+                    List<TerminalMountBlockEntity> cablePath = new ArrayList<>();
+                    cablePath.add(sourceRack[0]);
+                    cablePath.addAll(relayRacks);
+                    cablePath.add(originalRemoteRack[0]);
+                    for (int segment = 0; segment < cablePath.size() - 1; segment++) {
+                        for (int conductor = 0; conductor < 4; conductor++) {
+                            CableConnection cable = connect(helper,
+                                    cablePath.get(segment), conductor,
+                                    cablePath.get(segment + 1), conductor,
+                                    CableAmpacity.A150);
+                            cables.add(cable);
+                            if (segment == cablePath.size() - 2) {
+                                remoteSegmentCables.add(cable);
+                            }
+                        }
+                    }
+                    source[0].setSwitchClosed(true);
+                    originalRemoteLoad[0].setSwitchClosed(true);
+                    helper.assertTrue(source[0].getBlockState().getValue(
+                                    ElectricalDeviceBlock.POWERED),
+                            "source switch did not close before chunk lifecycle test");
+                    helper.assertTrue(originalRemoteLoad[0].getBlockState().getValue(
+                                    ElectricalDeviceBlock.POWERED),
+                            "load switch did not close before chunk lifecycle test");
+                    helper.assertValueEqual(originalRemoteLoad[0].telemetryModeId(),
+                            "native_to_fe",
+                            "load converter direction changed before chunk lifecycle test");
+                    observedRun[0] = remoteSegmentCables.getFirst().runId();
+                    sourceBoundaryRun[0] = cables.getFirst().runId();
+                    phase[0] = 0;
+                    phaseStartedAt[0] = now;
+                    return;
+                }
+
+                if (phase[0] == 0) {
+                    IEnergyStorage feLoad = originalRemoteLoad[0].feStorage(Direction.EAST);
+                    if (feLoad != null) {
+                        feLoad.extractEnergy(2_000, false);
+                    }
+                    if (originalRemoteLoad[0].telemetryState().deliveredPowerWatts() <= 0L) {
+                        return;
+                    }
+                    helper.assertValueEqual(data.records().stream()
+                                    .filter(record -> cables.contains(record.connection())).count(),
+                            (long) cables.size(),
+                            "formal cable placement did not persist the relay feeder");
+                    helper.assertTrue(ElectricalGridService.energizedCable(
+                                    helper.getLevel(), observedRun[0]) != null,
+                            "loaded remote endpoint did not produce live cable telemetry");
+                    // Complete the holder's save dependencies while it is still visible. The
+                    // headless GameTest loop otherwise advances so quickly that a pending unload
+                    // can retain the same LevelChunk instance until the ticket is re-added.
+                    helper.getLevel().getChunkSource().save(true);
+                    unloadChunks.forEach(chunk ->
+                            setChunkLifecycleTicket(helper, chunk, false));
+                    phase[0] = 1;
+                    phaseStartedAt[0] = now;
+                } else if (phase[0] == 1) {
+                    helper.getLevel().getChunkSource().tick(() -> true, false);
+                    for (int drained = 0;
+                            drained < 100 && helper.getLevel().getChunkSource().pollTask();
+                            drained++) {
+                        // Bound the standard chunk task drain so a broken fixture cannot hang CI.
+                    }
+                    evictChunkNowCache(helper, sourceChunk);
+                    CableService.synchronizeRack(sourceRack[0], List.of());
+                    helper.assertTrue(data.cable(sourceBoundaryRun[0]) != null,
+                            "pending remote unload discarded the source boundary cable");
+                    helper.assertTrue(!data.hasTombstone(sourceBoundaryRun[0]),
+                            "pending remote unload tombstoned the source boundary cable");
+                    boolean absentFromLevel = !helper.getLevel().hasChunk(
+                            remoteChunk.x, remoteChunk.z);
+                    evictChunkNowCache(helper, sourceChunk);
+                    boolean absentFromChunkCache = helper.getLevel().getChunkSource().getChunkNow(
+                            remoteChunk.x, remoteChunk.z) == null;
+                    boolean fullyUnloaded = absentFromLevel && absentFromChunkCache;
+                    if (!fullyUnloaded) {
+                        if (now - phaseStartedAt[0] >= 800) {
+                            helper.fail("remote fixture chunk never fully unloaded: hasChunk="
+                                    + helper.getLevel().hasChunk(remoteChunk.x, remoteChunk.z)
+                                    + ", getChunkNow=" + (helper.getLevel().getChunkSource()
+                                            .getChunkNow(remoteChunk.x, remoteChunk.z) != null)
+                                    + ", shouldTickBlocks=" + helper.getLevel()
+                                            .shouldTickBlocksAt(absoluteRemoteRackPos)
+                                    + ", rackRemoved=" + originalRemoteRack[0].isRemoved()
+                                    + ", loadRemoved=" + originalRemoteLoad[0].isRemoved()
+                                    + ", holder=" + helper.getLevel().getChunkSource().chunkMap
+                                            .getVisibleChunkIfPresent(remoteChunk.toLong()));
+                        }
+                        return;
+                    }
+                    if (!originalRemoteRack[0].isRemoved()
+                            || !originalRemoteLoad[0].isRemoved()) {
+                        return;
+                    }
+                    phase[0] = 2;
+                    phaseStartedAt[0] = now;
+                } else if (phase[0] == 2 && now - phaseStartedAt[0] >= 2) {
+                    helper.assertTrue(data.cable(observedRun[0]) != null,
+                            "SavedData discarded a cable when its remote chunk unloaded");
+                    helper.assertValueEqual(source[0].telemetryState().deliveredPowerWatts(), 0L,
+                            "source still transmitted power into an unloaded chunk");
+                    helper.assertTrue(source[0].telemetryState().fault() != FaultKind.MISSING_PHASE,
+                            "an unloaded remote endpoint was misreported as a live missing phase");
+                    helper.assertTrue(ElectricalGridService.energizedCable(
+                                    helper.getLevel(), observedRun[0]) == null,
+                            "an unloaded cable remained in live grid telemetry");
+
+                    CableConnection originalRemoteCable = remoteSegmentCables.getFirst();
+                    CableMutationResult recolored = CableService.recolorDetailed(
+                            helper.getLevel(), originalRemoteCable, CableColor.ofDyeIndex(14));
+                    helper.assertTrue(recolored.changed(),
+                            "unloaded remote endpoint blocked authoritative recoloring");
+                    cables.set(cables.indexOf(originalRemoteCable), recolored.cable());
+                    remoteSegmentCables.set(0, recolored.cable());
+                    helper.assertFalse(helper.getLevel().hasChunk(remoteChunk.x, remoteChunk.z),
+                            "recoloring loaded the remote chunk");
+                    helper.assertTrue(helper.getLevel().getChunkSource().getChunkNow(
+                                    remoteChunk.x, remoteChunk.z) == null,
+                            "remote chunk returned during the unload quiescence window");
+
+                    unloadChunks.forEach(chunk -> setChunkLifecycleTicket(helper, chunk, true));
+                    phase[0] = 3;
+                    phaseStartedAt[0] = now;
+                } else if (phase[0] == 3) {
+                    CableService.synchronizeRack(sourceRack[0], List.of());
+                    helper.assertTrue(data.cable(sourceBoundaryRun[0]) != null,
+                            "pending remote load discarded the source boundary cable");
+                    helper.assertTrue(!data.hasTombstone(sourceBoundaryRun[0]),
+                            "pending remote load tombstoned the source boundary cable");
+
+                    boolean relaysReady = relayRackPositions.stream().allMatch(pos ->
+                            isChunkActiveNow(helper, pos)
+                                    && loadedBlockEntityNow(helper, pos)
+                                            instanceof TerminalMountBlockEntity);
+                    Object reloadedRackEntity = loadedBlockEntityNow(
+                            helper, absoluteRemoteRackPos);
+                    Object reloadedLoadEntity = loadedBlockEntityNow(
+                            helper, absoluteRemoteLoadPos);
+                    if (!relaysReady
+                            || !isChunkActiveNow(helper, absoluteRemoteRackPos)
+                            || !(reloadedRackEntity instanceof TerminalMountBlockEntity)
+                            || !(reloadedLoadEntity instanceof ElectricalDeviceBlockEntity)) {
+                        if (now > phaseStartedAt[0]) {
+                            helper.assertTrue(source[0].telemetryState().fault()
+                                            != FaultKind.MISSING_PHASE,
+                                    "pending remote load was misreported as a live missing phase");
+                        }
+                        helper.assertTrue(now - phaseStartedAt[0] < 100,
+                                "remote fixture chunk never reloaded its block entities");
+                        return;
+                    }
+                    TerminalMountBlockEntity reloadedRack =
+                            (TerminalMountBlockEntity) reloadedRackEntity;
+                    ElectricalDeviceBlockEntity reloadedLoad =
+                            (ElectricalDeviceBlockEntity) reloadedLoadEntity;
+                    IEnergyStorage reloadedFeLoad = reloadedLoad.feStorage(Direction.EAST);
+                    if (reloadedFeLoad != null) {
+                        reloadedFeLoad.extractEnergy(2_000, false);
+                    }
+                    if (reloadedLoad.telemetryState().deliveredPowerWatts() <= 0L) {
+                        List<CableConnection> remoteCached = List.copyOf(reloadedRack.cables());
+                        List<TerminalMountBlockEntity> loadedPath = new ArrayList<>();
+                        loadedPath.add(sourceRack[0]);
+                        relayRackPositions.stream()
+                                .map(helper.getLevel()::getBlockEntity)
+                                .filter(TerminalMountBlockEntity.class::isInstance)
+                                .map(TerminalMountBlockEntity.class::cast)
+                                .forEach(loadedPath::add);
+                        loadedPath.add(reloadedRack);
+                        List<CableConnection> cachedCables = loadedPath.stream()
+                                .flatMap(rack -> rack.cables().stream()).toList();
+                        helper.assertTrue(now - phaseStartedAt[0] < 100,
+                                "power did not resume after the remote chunk reloaded: source="
+                                        + source[0].telemetryState().fault()
+                                        + ", load=" + reloadedLoad.telemetryState().fault()
+                                        + ", requested=" + reloadedLoad.telemetryRequestedPowerWatts()
+                                        + ", remoteCache=" + remoteCached.stream()
+                                                .map(cable -> cable.color().dyeIndex()).toList()
+                                        + ", relayTicking=" + relayRackPositions.stream()
+                                                .map(helper.getLevel()::shouldTickBlocksAt).toList()
+                                        + ", cacheSizes=" + loadedPath.stream()
+                                                .map(rack -> rack.cables().size()).toList()
+                                        + ", runs=" + cachedCables.stream()
+                                                .map(CableConnection::runId).distinct().count()
+                                        + ", records=" + cachedCables.stream().distinct().count()
+                                        + ", sameRack=" + (reloadedRack == originalRemoteRack[0])
+                                        + ", sameLoad=" + (reloadedLoad == originalRemoteLoad[0])
+                                        + ", anchorsValid=" + cables.stream().allMatch(cable ->
+                                                CableService.anchorOf(helper.getLevel(), cable.a()) != null
+                                                        && CableService.anchorOf(helper.getLevel(),
+                                                                cable.b()) != null));
+                        return;
+                    }
+                    helper.assertTrue(reloadedRack != originalRemoteRack[0]
+                                    && reloadedLoad != originalRemoteLoad[0],
+                            "remote block entities were never recreated by a real reload");
+                    List<BlockPos> loadedRackPositions = new ArrayList<>();
+                    loadedRackPositions.add(absoluteSourceRackPos);
+                    loadedRackPositions.addAll(relayRackPositions);
+                    loadedRackPositions.add(absoluteRemoteRackPos);
+                    for (BlockPos rackPos : loadedRackPositions) {
+                        Object loaded = helper.getLevel().getBlockEntity(rackPos);
+                        helper.assertTrue(loaded instanceof TerminalMountBlockEntity,
+                                "reloaded feeder rack is missing at " + rackPos);
+                        TerminalMountBlockEntity loadedRack = (TerminalMountBlockEntity) loaded;
+                        List<CableConnection> authoritative = data.cablesAt(rackPos);
+                        List<CableConnection> cached = List.copyOf(loadedRack.cables());
+                        helper.assertTrue(cached.size() == authoritative.size()
+                                        && cached.containsAll(authoritative)
+                                        && authoritative.containsAll(cached),
+                                "rack cache differs from SavedData at " + rackPos);
+                    }
+                    helper.assertTrue(reloadedRack.cables().containsAll(remoteSegmentCables),
+                            "reloaded rack cache did not rebuild from authoritative SavedData");
+                    helper.assertValueEqual(reloadedLoad.telemetryState().fault(), FaultKind.NONE,
+                            "reloaded load did not return to a healthy powered state");
+                    helper.assertTrue(ElectricalGridService.energizedCable(
+                                    helper.getLevel(), observedRun[0]) != null,
+                            "reloaded cable did not return to live grid telemetry");
+
+                    CableConnection cutCable = remoteSegmentCables.getFirst();
+                    CableMutationResult removed = CableService.disconnectDetailed(
+                            helper.getLevel(), cutCable);
+                    helper.assertTrue(removed.changed(),
+                            "formal disconnect did not cut the reloaded cable");
+                    helper.assertTrue(data.hasTombstone(observedRun[0]),
+                            "cut cable did not leave a migration tombstone");
+                    CableService.synchronizeRack(reloadedRack, List.of(cutCable));
+                    helper.assertTrue(data.cable(observedRun[0]) == null,
+                            "stale legacy cable half revived a tombstoned run");
+                    helper.assertTrue(data.hasTombstone(observedRun[0]),
+                            "legacy migration discarded the cut cable tombstone");
+
+                    cleanup.run();
+                    phase[0] = 4;
+                    helper.succeed();
+                }
+            } catch (RuntimeException | Error failure) {
+                try {
+                    cleanup.run();
+                } catch (RuntimeException | Error cleanupFailure) {
+                    failure.addSuppressed(cleanupFailure);
+                }
+                throw failure;
+            }
+        });
     }
 
     @GameTest(template = TEMPLATE, timeoutTicks = 120)
@@ -650,6 +1234,36 @@ public final class ElectricalClosedLoopGameTests {
         });
     }
 
+    private static void setChunkLifecycleTicket(
+            GameTestHelper helper, ChunkPos chunk, boolean loaded) {
+        if (loaded) {
+            helper.getLevel().getChunkSource().addRegionTicket(
+                    TicketType.FORCED, chunk, 1, chunk, true);
+        } else {
+            helper.getLevel().getChunkSource().removeRegionTicket(
+                    TicketType.FORCED, chunk, 1, chunk, true);
+        }
+    }
+
+    private static void evictChunkNowCache(GameTestHelper helper, ChunkPos sourceChunk) {
+        helper.getLevel().getChunkSource().getChunkNow(sourceChunk.x, sourceChunk.z);
+        helper.getLevel().getChunkSource().getChunkNow(sourceChunk.x - 1, sourceChunk.z);
+        helper.getLevel().getChunkSource().getChunkNow(sourceChunk.x, sourceChunk.z - 1);
+        helper.getLevel().getChunkSource().getChunkNow(sourceChunk.x - 1, sourceChunk.z - 1);
+    }
+
+    private static boolean isChunkActiveNow(GameTestHelper helper, BlockPos pos) {
+        return helper.getLevel().getChunkSource().isPositionTicking(ChunkPos.asLong(pos))
+                && helper.getLevel().getChunkSource().getChunkNow(
+                        pos.getX() >> 4, pos.getZ() >> 4) != null;
+    }
+
+    private static Object loadedBlockEntityNow(GameTestHelper helper, BlockPos pos) {
+        var chunk = helper.getLevel().getChunkSource().getChunkNow(
+                pos.getX() >> 4, pos.getZ() >> 4);
+        return chunk == null ? null : chunk.getBlockEntity(pos);
+    }
+
     private static ElectricalDeviceBlockEntity placeDevice(
             GameTestHelper helper, BlockPos pos, ElectricalDeviceBlock block) {
         return placeDevice(helper, pos, block, Direction.NORTH);
@@ -660,6 +1274,16 @@ public final class ElectricalClosedLoopGameTests {
         BlockState state = block.defaultBlockState().setValue(ElectricalDeviceBlock.FACING, facing);
         helper.setBlock(pos, state);
         Object blockEntity = helper.getBlockEntity(pos);
+        helper.assertTrue(blockEntity instanceof ElectricalDeviceBlockEntity,
+                "electrical device block entity was not created at " + pos);
+        return (ElectricalDeviceBlockEntity) blockEntity;
+    }
+
+    private static ElectricalDeviceBlockEntity placeAbsoluteDevice(
+            GameTestHelper helper, BlockPos pos, ElectricalDeviceBlock block, Direction facing) {
+        BlockState state = block.defaultBlockState().setValue(ElectricalDeviceBlock.FACING, facing);
+        helper.getLevel().setBlock(pos, state, Block.UPDATE_ALL);
+        Object blockEntity = helper.getLevel().getBlockEntity(pos);
         helper.assertTrue(blockEntity instanceof ElectricalDeviceBlockEntity,
                 "electrical device block entity was not created at " + pos);
         return (ElectricalDeviceBlockEntity) blockEntity;
@@ -808,6 +1432,12 @@ public final class ElectricalClosedLoopGameTests {
         return count;
     }
 
+    private static void useRackCenter(GameTestHelper helper, BlockPos relativePos, Player player) {
+        BlockPos absolute = helper.absolutePos(relativePos);
+        helper.useBlock(relativePos, player, new BlockHitResult(
+                Vec3.atCenterOf(absolute), Direction.NORTH, absolute, false));
+    }
+
     private static TerminalMountBlockEntity placeRack(GameTestHelper helper, BlockPos pos,
                                                        Direction facing, TerminalStyle style,
                                                        int terminals) {
@@ -820,6 +1450,30 @@ public final class ElectricalClosedLoopGameTests {
         helper.setBlock(pos, block.defaultBlockState().setValue(TerminalMountBlock.FACING, facing));
         TerminalMountBlockEntity rack = helper.getBlockEntity(pos);
         helper.assertTrue(rack != null, "terminal rack block entity was not created at " + pos);
+        for (int cell = 0; cell < terminals; cell++) {
+            rack.addTerminal(cell, style);
+        }
+        helper.assertValueEqual(rack.terminalCount(), terminals,
+                "terminal rack rejected required conductors");
+        return rack;
+    }
+
+    private static TerminalMountBlockEntity placeAbsoluteRack(
+            GameTestHelper helper, BlockPos pos, Direction facing, TerminalStyle style,
+            int terminals) {
+        TerminalMountBlock block = switch (style.tier()) {
+            case LV -> ModBlocks.LV_TERMINAL_MOUNT.get();
+            case MV -> ModBlocks.MV_TERMINAL_MOUNT.get();
+            case HV -> ModBlocks.HV_TERMINAL_MOUNT.get();
+            case EHV -> ModBlocks.EHV_TERMINAL_MOUNT.get();
+        };
+        helper.getLevel().setBlock(pos,
+                block.defaultBlockState().setValue(TerminalMountBlock.FACING, facing),
+                Block.UPDATE_ALL);
+        Object blockEntity = helper.getLevel().getBlockEntity(pos);
+        helper.assertTrue(blockEntity instanceof TerminalMountBlockEntity,
+                "terminal rack block entity was not created at " + pos);
+        TerminalMountBlockEntity rack = (TerminalMountBlockEntity) blockEntity;
         for (int cell = 0; cell < terminals; cell++) {
             rack.addTerminal(cell, style);
         }

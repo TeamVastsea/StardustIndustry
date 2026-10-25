@@ -200,6 +200,12 @@ public class InstallationToolItem extends Item {
         }
 
         if (player != null && player.isShiftKeyDown()) {
+            if (com.stardustindustry.stardustindustry.energy.CableService.isReadOnly(level)) {
+                player.displayClientMessage(Component.translatable(
+                        "message.stardustindustry.cable.data_read_only")
+                        .withStyle(ChatFormatting.RED), true);
+                return true;
+            }
             takeWhole(level, pos, mount, rack, player);
             return true;
         }

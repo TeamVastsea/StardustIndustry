@@ -106,6 +106,7 @@
   "message.stardustindustry.cable.dyed": "线缆已染色",
   "message.stardustindustry.cable.cut": "线缆已剪断，线缆已回收",
   "message.stardustindustry.cable.bare_not_paintable": "裸导体没有外皮，无法染色",
+  "message.stardustindustry.cable.data_read_only": "电网数据来自更新版本的星尘工业；为保护存档，当前禁止拆改端子与端子座",
 
   "screen.stardustindustry.machine_params": "机器参数",
   "screen.stardustindustry.machine_params.tier": "等级：%s",
@@ -239,6 +240,7 @@
   "screen.stardustindustry.telemetry.cable_colour": "颜色：%s",
   "screen.stardustindustry.telemetry.cable_colour.undyed": "未染色",
   "screen.stardustindustry.telemetry.cable_voltage": "电压：%s | 等级 %s",
+  "screen.stardustindustry.telemetry.cable_voltage_drop": "单根导体压降：%s",
   "screen.stardustindustry.telemetry.cable_current": "实际电流：%s",
   "screen.stardustindustry.telemetry.cable_loss": "单线损耗：%s",
   "screen.stardustindustry.telemetry.cable_rating": "载流量：%s",

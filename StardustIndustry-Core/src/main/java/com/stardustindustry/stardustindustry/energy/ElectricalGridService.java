@@ -84,6 +84,7 @@ public final class ElectricalGridService {
     }
 
     private static void solve(Level level) {
+        ServerLevel serverLevel = (ServerLevel) level;
         Set<BlockPos> registered = RACKS.get(level);
         if (registered == null || registered.isEmpty()) {
             resetTrackedPorts(level);
@@ -96,8 +97,9 @@ public final class ElectricalGridService {
 
         List<TerminalMountBlockEntity> racks = new ArrayList<>();
         registered.removeIf(pos -> {
-            if (!level.isLoaded(pos)) return false;
-            if (level.getBlockEntity(pos) instanceof TerminalMountBlockEntity rack) {
+            if (!ElectricalChunkAvailability.isActiveNow(serverLevel, pos)) return false;
+            var chunk = serverLevel.getChunkSource().getChunkNow(pos.getX() >> 4, pos.getZ() >> 4);
+            if (chunk.getBlockEntity(pos) instanceof TerminalMountBlockEntity rack) {
                 racks.add(rack);
                 return false;
             }
@@ -108,16 +110,26 @@ public final class ElectricalGridService {
 
         DisjointSet conductors = new DisjointSet();
         Set<TerminalEndpoint> loadedEndpoints = new HashSet<>();
-        Set<CableConnection> collectedCables = new LinkedHashSet<>();
+        Map<CableRunId, CableConnection> collectedCables = new LinkedHashMap<>();
+        ElectricalNetworkSavedData networkData = ElectricalNetworkSavedData.get(serverLevel);
         for (TerminalMountBlockEntity rack : racks) {
+            Map<CableRunId, CableConnection> rackCables = new LinkedHashMap<>();
             for (int cell : rack.terminalCells()) {
                 TerminalEndpoint endpoint = new TerminalEndpoint(rack.getBlockPos(), cell);
                 conductors.add(endpoint);
                 loadedEndpoints.add(endpoint);
+                // Block entities cache cables for rendering only; the SavedData record is the
+                // sole electrical authority, including during an offline recolour or reload.
+                for (CableConnection cable : networkData.cablesAt(endpoint)) {
+                    collectedCables.put(cable.runId(), cable);
+                    rackCables.put(cable.runId(), cable);
+                }
             }
-            collectedCables.addAll(rack.cables());
+            // A chunk can resume ticking without reconstructing its block entities, so onLoad
+            // alone cannot make offline mutations visible in the rendering cache.
+            rack.replaceCableCacheFromNetwork(rackCables.values());
         }
-        List<CableConnection> cables = collectedCables.stream()
+        List<CableConnection> cables = collectedCables.values().stream()
                 .sorted(ElectricalGridService::compareCables)
                 .toList();
         for (CableConnection cable : cables) {
@@ -126,13 +138,17 @@ public final class ElectricalGridService {
             }
         }
         Set<TerminalEndpoint> unloadedConductorRoots = loadedEndpointsWithUnloadedPeers(
-                cables, loadedEndpoints, level::isLoaded).stream()
+                cables, loadedEndpoints,
+                pos -> ElectricalChunkAvailability.isActiveNow(serverLevel, pos)).stream()
                 .map(conductors::find)
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
 
         Map<Object, PortAccumulator> groupedPorts = new LinkedHashMap<>();
         for (TerminalMountBlockEntity rack : racks) {
             BlockPos portPos = rack.getBlockPos().relative(rack.facing());
+            if (!ElectricalChunkAvailability.isActiveNow(serverLevel, portPos)) {
+                continue;
+            }
             IElectricalPort port = level.getCapability(ModCapabilityTypes.ELECTRICAL_PORT, portPos,
                     rack.facing().getOpposite());
             if (port == null) continue;
@@ -865,7 +881,9 @@ public final class ElectricalGridService {
 
     /**
      * Finds the loaded ends of authoritative runs whose opposite chunk is unavailable.
-     * The supplied predicate must be a non-loading chunk-presence check such as Level#isLoaded.
+     * The supplied predicate must be a non-loading active-chunk check. A chunk pending load or
+     * unload may be present at FULL status without a ticking holder, but it must not keep
+     * participating in the live circuit.
      */
     static Set<TerminalEndpoint> loadedEndpointsWithUnloadedPeers(
             Collection<CableConnection> cables,
@@ -1046,11 +1064,9 @@ public final class ElectricalGridService {
             resistanceByCable.put(branch.edge(), branch.resistanceOhms());
         }
         for (CableConnection cable : topology.cables()) {
-            double measuredAmps = currentAmpsByCable.getOrDefault(cable, 0.0);
-            double currentAmps = Double.isFinite(measuredAmps) ? Math.max(0.0, measuredAmps) : 0.0;
-            long lineLossWatts = roundedLoss(ElectricalUnits.resistiveLossWatts(
-                    currentAmps, resistanceByCable.getOrDefault(cable, 0.0)));
-            EnergizedCable next = new EnergizedCable(cable, volts, currentAmps, lineLossWatts);
+            EnergizedCable next = measureEnergizedCable(cable, volts,
+                    currentAmpsByCable.getOrDefault(cable, 0.0),
+                    resistanceByCable.getOrDefault(cable, 0.0));
             energizedCables.merge(cable.runId(), next,
                     (first, second) -> {
                         if (first.volts() != second.volts()) {
@@ -1059,6 +1075,17 @@ public final class ElectricalGridService {
                         return first.currentAmps() > second.currentAmps() ? first : second;
                     });
         }
+    }
+
+    static EnergizedCable measureEnergizedCable(CableConnection cable, int volts,
+                                                 double measuredAmps, double resistanceOhms) {
+        double currentAmps = Double.isFinite(measuredAmps) ? Math.max(0.0, measuredAmps) : 0.0;
+        double resistance = Double.isFinite(resistanceOhms)
+                ? Math.max(0.0, resistanceOhms) : 0.0;
+        double voltageDropVolts = ElectricalUnits.voltageDropVolts(currentAmps, resistance);
+        long lineLossWatts = roundedLoss(ElectricalUnits.resistiveLossWatts(
+                currentAmps, resistance));
+        return new EnergizedCable(cable, volts, currentAmps, voltageDropVolts, lineLossWatts);
     }
 
     private static void applyCableHeat(Level level, Collection<CableLoad> cableLoads) {

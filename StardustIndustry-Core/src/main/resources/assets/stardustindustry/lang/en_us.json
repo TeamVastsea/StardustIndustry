@@ -106,6 +106,7 @@
   "message.stardustindustry.cable.dyed": "Cable dyed",
   "message.stardustindustry.cable.cut": "Cable cut, spool recovered",
   "message.stardustindustry.cable.bare_not_paintable": "Bare conductor has no sheath to paint",
+  "message.stardustindustry.cable.data_read_only": "Electrical network data is from a newer Stardust Industry version; terminal changes are disabled to protect it",
 
   "screen.stardustindustry.machine_params": "Machine Parameters",
   "screen.stardustindustry.machine_params.tier": "Tier: %s",
@@ -239,6 +240,7 @@
   "screen.stardustindustry.telemetry.cable_colour": "Colour: %s",
   "screen.stardustindustry.telemetry.cable_colour.undyed": "Uncoloured",
   "screen.stardustindustry.telemetry.cable_voltage": "Voltage: %s | Tier %s",
+  "screen.stardustindustry.telemetry.cable_voltage_drop": "Conductor voltage drop: %s",
   "screen.stardustindustry.telemetry.cable_current": "Actual current: %s",
   "screen.stardustindustry.telemetry.cable_loss": "Single-cable loss: %s",
   "screen.stardustindustry.telemetry.cable_rating": "Ampacity: %s",

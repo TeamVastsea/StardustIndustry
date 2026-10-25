@@ -47,6 +47,7 @@ public final class ElectricalNetworkSavedData extends SavedData {
     private final Map<TerminalEndpoint, Set<CableRunId>> runsByEndpoint = new HashMap<>();
     private final Set<CableRunId> tombstones = new HashSet<>();
     private final Map<ElectricalAccountKey, EnergyRemainders> energyRemainders = new HashMap<>();
+    private CompoundTag unsupportedFutureData;
 
     public static ElectricalNetworkSavedData get(ServerLevel level) {
         return level.getDataStorage().computeIfAbsent(FACTORY, DATA_NAME);
@@ -54,6 +55,17 @@ public final class ElectricalNetworkSavedData extends SavedData {
 
     /** Public for focused unit tests; worlds obtain the instance through {@link #get}. */
     public ElectricalNetworkSavedData() {}
+
+    /**
+     * Whether this store was written by a newer, unsupported data format.
+     *
+     * <p>Callers must treat the electrical topology as read-only while this is
+     * true. The opaque source tag is preserved on save, so refusing edits avoids
+     * silently downgrading or orphaning cable records this version cannot read.</p>
+     */
+    public boolean isReadOnly() {
+        return unsupportedFutureData != null;
+    }
 
     public Collection<CableRecord> records() {
         return cables.entrySet().stream()
@@ -100,7 +112,10 @@ public final class ElectricalNetworkSavedData extends SavedData {
     }
 
     /** Adds a newly placed cable, enforcing endpoint uniqueness and an acyclic topology. */
-    public CableMutationResult connect(CableConnection cable) {
+    CableMutationResult connect(CableConnection cable) {
+        if (unsupportedFutureData != null) {
+            return unsupportedVersionMutation();
+        }
         CableMutationResult validation = validateCable(cable);
         if (validation != null) {
             return validation;
@@ -125,7 +140,10 @@ public final class ElectricalNetworkSavedData extends SavedData {
      * Imports one cable half from the pre-SavedData block-entity format.
      * Tombstones win over stale chunks, and duplicate halves collapse into one run.
      */
-    public CableMutationResult migrateLegacy(CableConnection cable) {
+    CableMutationResult migrateLegacy(CableConnection cable) {
+        if (unsupportedFutureData != null) {
+            return unsupportedVersionMutation();
+        }
         if (cable != null && cable.insulation() == CableInsulation.BARE
                 && cable.color() != null && cable.color().isPainted()) {
             cable = cable.withColor(CableColor.UNDYED);
@@ -165,7 +183,10 @@ public final class ElectricalNetworkSavedData extends SavedData {
         return CableMutationResult.success(cable);
     }
 
-    public CableMutationResult recolor(CableConnection expected, CableColor color) {
+    CableMutationResult recolor(CableConnection expected, CableColor color) {
+        if (unsupportedFutureData != null) {
+            return unsupportedVersionMutation();
+        }
         if (expected == null || color == null) {
             return CableMutationResult.failure(CableMutationResult.Status.INVALID_PRODUCT);
         }
@@ -195,7 +216,10 @@ public final class ElectricalNetworkSavedData extends SavedData {
     }
 
     /** Removes a cable only when the caller's product description matches it. */
-    public CableMutationResult disconnect(CableConnection expected) {
+    CableMutationResult disconnect(CableConnection expected) {
+        if (unsupportedFutureData != null) {
+            return unsupportedVersionMutation();
+        }
         if (expected == null) {
             return CableMutationResult.failure(CableMutationResult.Status.NOT_FOUND);
         }
@@ -214,7 +238,10 @@ public final class ElectricalNetworkSavedData extends SavedData {
         return remove(id, existing);
     }
 
-    public CableMutationResult disconnect(CableRunId id) {
+    CableMutationResult disconnect(CableRunId id) {
+        if (unsupportedFutureData != null) {
+            return unsupportedVersionMutation();
+        }
         CableRecord existing = cables.get(id);
         if (existing == null) {
             if (tombstones.add(id)) {
@@ -225,7 +252,10 @@ public final class ElectricalNetworkSavedData extends SavedData {
         return remove(id, existing);
     }
 
-    public List<CableConnection> disconnectAll(TerminalEndpoint endpoint) {
+    List<CableConnection> disconnectAll(TerminalEndpoint endpoint) {
+        if (unsupportedFutureData != null) {
+            return List.of();
+        }
         Set<CableRunId> indexed = runsByEndpoint.get(endpoint);
         if (indexed == null || indexed.isEmpty()) {
             return List.of();
@@ -241,7 +271,10 @@ public final class ElectricalNetworkSavedData extends SavedData {
         return List.copyOf(removed);
     }
 
-    public List<CableConnection> disconnectAll(BlockPos rackPos) {
+    List<CableConnection> disconnectAll(BlockPos rackPos) {
+        if (unsupportedFutureData != null) {
+            return List.of();
+        }
         List<CableRunId> ids = cables.keySet().stream()
                 .filter(id -> id.a().pos().equals(rackPos) || id.b().pos().equals(rackPos))
                 .sorted()
@@ -297,6 +330,9 @@ public final class ElectricalNetworkSavedData extends SavedData {
     }
 
     public boolean setThermalState(CableRunId id, CableThermalModel.State state) {
+        if (unsupportedFutureData != null) {
+            return false;
+        }
         CableRecord existing = cables.get(id);
         if (existing == null || state == null) {
             return false;
@@ -313,6 +349,9 @@ public final class ElectricalNetworkSavedData extends SavedData {
     }
 
     public boolean setThermalState(CableRunId id, CableThermalModel.State state, long gameTick) {
+        if (unsupportedFutureData != null) {
+            return false;
+        }
         CableRecord existing = cables.get(id);
         if (existing == null || state == null) {
             return false;
@@ -337,7 +376,7 @@ public final class ElectricalNetworkSavedData extends SavedData {
     }
 
     public void setEnergyRemainder(ElectricalAccountKey account, boolean extracting, long value) {
-        if (account == null) {
+        if (unsupportedFutureData != null || account == null) {
             return;
         }
         long normalized = Math.max(0L, value) % ElectricalUnits.TICKS_PER_SECOND;
@@ -357,6 +396,9 @@ public final class ElectricalNetworkSavedData extends SavedData {
     }
 
     void retainEnergyRemainderAccounts(Collection<ElectricalAccountKey> accounts) {
+        if (unsupportedFutureData != null) {
+            return;
+        }
         Set<ElectricalAccountKey> retained = new HashSet<>(accounts);
         if (energyRemainders.keySet().removeIf(account -> !retained.contains(account))) {
             setDirty();
@@ -369,6 +411,10 @@ public final class ElectricalNetworkSavedData extends SavedData {
         tombstones.add(id);
         setDirty();
         return CableMutationResult.success(existing.connection());
+    }
+
+    private static CableMutationResult unsupportedVersionMutation() {
+        return CableMutationResult.failure(CableMutationResult.Status.UNSUPPORTED_DATA_VERSION);
     }
 
     private static CableMutationResult validateCable(CableConnection cable) {
@@ -440,6 +486,10 @@ public final class ElectricalNetworkSavedData extends SavedData {
 
     @Override
     public CompoundTag save(CompoundTag tag, HolderLookup.Provider registries) {
+        if (unsupportedFutureData != null) {
+            tag.merge(unsupportedFutureData.copy());
+            return tag;
+        }
         tag.putInt("Version", FORMAT_VERSION);
         ListTag cableList = new ListTag();
         cables.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
@@ -476,6 +526,30 @@ public final class ElectricalNetworkSavedData extends SavedData {
     }
 
     public static ElectricalNetworkSavedData load(CompoundTag tag, HolderLookup.Provider registries) {
+        int version = tag.contains("Version", Tag.TAG_ANY_NUMERIC)
+                ? Math.max(0, tag.getInt("Version")) : 0;
+        return switch (version) {
+            case 0 -> migrateVersionZero(tag);
+            case FORMAT_VERSION -> loadCurrentFormat(tag);
+            default -> preserveUnsupportedFutureVersion(tag);
+        };
+    }
+
+    /** Version zero is the unversioned prototype layout, whose fields are a subset of v1. */
+    private static ElectricalNetworkSavedData migrateVersionZero(CompoundTag tag) {
+        ElectricalNetworkSavedData data = loadCurrentFormat(tag);
+        data.setDirty();
+        return data;
+    }
+
+    /** Refuse to downgrade data written by a newer mod while preserving it byte-for-byte logically. */
+    private static ElectricalNetworkSavedData preserveUnsupportedFutureVersion(CompoundTag tag) {
+        ElectricalNetworkSavedData data = new ElectricalNetworkSavedData();
+        data.unsupportedFutureData = tag.copy();
+        return data;
+    }
+
+    private static ElectricalNetworkSavedData loadCurrentFormat(CompoundTag tag) {
         ElectricalNetworkSavedData data = new ElectricalNetworkSavedData();
         ListTag deletedList = tag.getList("Tombstones", Tag.TAG_COMPOUND);
         for (int i = 0; i < deletedList.size(); i++) {

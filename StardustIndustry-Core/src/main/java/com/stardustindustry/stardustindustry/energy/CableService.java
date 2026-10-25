@@ -69,6 +69,19 @@ public final class CableService {
         return CableColor.UNDYED;
     }
 
+    /**
+     * Whether electrical topology edits are disabled for this dimension.
+     *
+     * <p>This is true when the world's network data was written by a newer data
+     * format. Interactive callers must check it before removing terminals or
+     * racks, because those physical edits would otherwise orphan opaque cable
+     * records that this version intentionally preserves.</p>
+     */
+    public static boolean isReadOnly(Level level) {
+        return level instanceof ServerLevel serverLevel
+                && ElectricalNetworkSavedData.get(serverLevel).isReadOnly();
+    }
+
     /** As {@link #connect(Level, TerminalEndpoint, TerminalEndpoint, CableAmpacity, CableInsulation)}, in a colour. */
     public static boolean connect(Level level, TerminalEndpoint from, TerminalEndpoint to,
                                   CableAmpacity ampacity, CableInsulation insulation, CableColor color) {
@@ -94,7 +107,7 @@ public final class CableService {
                 || (insulation == CableInsulation.BARE && color.isPainted())) {
             return CableMutationResult.failure(CableMutationResult.Status.INVALID_PRODUCT);
         }
-        if (!serverLevel.isLoaded(from.pos()) || !serverLevel.isLoaded(to.pos())) {
+        if (!hasChunkNow(serverLevel, from.pos()) || !hasChunkNow(serverLevel, to.pos())) {
             return CableMutationResult.failure(CableMutationResult.Status.ENDPOINT_UNAVAILABLE);
         }
         TerminalMountBlockEntity fromRack = rackAt(serverLevel, from.pos());
@@ -204,10 +217,17 @@ public final class CableService {
      * whenever the player walks away from one end.</p>
      */
     private static TerminalMountBlockEntity rackAt(Level level, BlockPos pos) {
-        if (!level.isLoaded(pos)) {
-            return null;
+        if (level instanceof ServerLevel serverLevel) {
+            var chunk = serverLevel.getChunkSource().getChunkNow(pos.getX() >> 4, pos.getZ() >> 4);
+            return chunk != null && chunk.getBlockEntity(pos) instanceof TerminalMountBlockEntity rack
+                    ? rack : null;
         }
+        if (!level.isLoaded(pos)) return null;
         return level.getBlockEntity(pos) instanceof TerminalMountBlockEntity rack ? rack : null;
+    }
+
+    private static boolean hasChunkNow(ServerLevel level, BlockPos pos) {
+        return level.getChunkSource().getChunkNow(pos.getX() >> 4, pos.getZ() >> 4) != null;
     }
 
     /** Every cable leaving the rack at {@code pos}, or an empty list. */
@@ -249,6 +269,11 @@ public final class CableService {
                 }
             }
         }
+        // onLoad runs before ServerChunkCache#getChunkNow is guaranteed to expose this chunk.
+        // Refresh the rack instance we already own directly; otherwise a legacy Cables tag can
+        // survive beside a recolored authoritative record and look like a parallel conductor.
+        rack.replaceCableCacheFromNetwork(data.cablesAt(rack.getBlockPos()));
+        touched.remove(rack.getBlockPos());
         refreshLoadedRacks(serverLevel, data, List.of(), touched);
     }
 
@@ -260,7 +285,8 @@ public final class CableService {
 
     private static boolean loadedFarEndpointMissing(ServerLevel level, CableConnection cable, BlockPos localPos) {
         TerminalEndpoint far = cable.a().pos().equals(localPos) ? cable.b() : cable.a();
-        if (far.pos().equals(localPos) || !level.isLoaded(far.pos())) {
+        if (far.pos().equals(localPos)
+                || !ElectricalChunkAvailability.isActiveNow(level, far.pos())) {
             return false;
         }
         TerminalMountBlockEntity farRack = rackAt(level, far.pos());
@@ -324,7 +350,8 @@ public final class CableService {
         if (level == null) {
             return null;
         }
-        if (!(level.getBlockEntity(endpoint.pos()) instanceof TerminalMountBlockEntity rack)) {
+        TerminalMountBlockEntity rack = rackAt(level, endpoint.pos());
+        if (rack == null) {
             return null;
         }
         if (!(rack.getBlockState().getBlock()

@@ -230,6 +230,43 @@ class ElectricalNetworkSavedDataTest {
     }
 
     @Test
+    void unversionedDataMigratesInPlaceAndWritesCurrentVersion() {
+        ElectricalNetworkSavedData original = new ElectricalNetworkSavedData();
+        CableConnection cable = cable(endpoint(0), endpoint(1));
+        original.connect(cable);
+        original.recolor(cable, CableColor.ofDyeIndex(14));
+        CompoundTag unversioned = original.save(new CompoundTag(), null);
+        unversioned.remove("Version");
+
+        ElectricalNetworkSavedData migrated = ElectricalNetworkSavedData.load(unversioned, null);
+
+        assertTrue(migrated.isDirty());
+        assertEquals(CableColor.ofDyeIndex(14), migrated.cable(cable.runId()).color());
+        CompoundTag rewritten = migrated.save(new CompoundTag(), null);
+        assertEquals(1, rewritten.getInt("Version"));
+    }
+
+    @Test
+    void futureVersionIsPreservedAndRejectsDowngradeMutations() {
+        CompoundTag future = new CompoundTag();
+        future.putInt("Version", 2);
+        future.putString("FutureOnlyField", "preserve-me");
+
+        ElectricalNetworkSavedData loaded = ElectricalNetworkSavedData.load(future, null);
+
+        assertTrue(loaded.isReadOnly());
+        assertFalse(new ElectricalNetworkSavedData().isReadOnly());
+        assertEquals(CableMutationResult.Status.UNSUPPORTED_DATA_VERSION,
+                loaded.connect(cable(endpoint(0), endpoint(1))).status());
+        loaded.setEnergyRemainder(
+                new ElectricalAccountKey(new BlockPos(4, 64, 0), "future"), false, 7L);
+        CompoundTag resaved = loaded.save(new CompoundTag(), null);
+        assertEquals(2, resaved.getInt("Version"));
+        assertEquals("preserve-me", resaved.getString("FutureOnlyField"));
+        assertFalse(loaded.isDirty());
+    }
+
+    @Test
     void persistentRemainderAdapterPrunesAccountsThatAreNoLongerPresent() {
         ElectricalNetworkSavedData data = new ElectricalNetworkSavedData();
         ElectricalAccountKey removed = new ElectricalAccountKey(

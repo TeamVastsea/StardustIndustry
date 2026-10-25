@@ -149,6 +149,10 @@ public class TerminalMountBlockEntity extends BlockEntity {
      * removing a piece gives the player its parts back, and a cable is a part.</p>
      */
     public void removeTerminal(int cell, Player player) {
+        if (level != null && !level.isClientSide()
+                && com.stardustindustry.stardustindustry.energy.CableService.isReadOnly(level)) {
+            return;
+        }
         TerminalStyle style = terminals.remove(cell);
         if (style == null) {
             return;
@@ -172,6 +176,10 @@ public class TerminalMountBlockEntity extends BlockEntity {
 
     /** Removes every cable and terminal and returns their stacks, for a full-rack take. */
     public java.util.List<ItemStack> drainTerminals() {
+        if (level != null && !level.isClientSide()
+                && com.stardustindustry.stardustindustry.energy.CableService.isReadOnly(level)) {
+            return java.util.List.of();
+        }
         java.util.List<ItemStack> out = new java.util.ArrayList<>();
         if (level != null && !level.isClientSide()) {
             out.addAll(com.stardustindustry.stardustindustry.energy.CableService.disconnectAll(
@@ -188,8 +196,7 @@ public class TerminalMountBlockEntity extends BlockEntity {
     // ---- cables ----
     //
     // The server-side authority is ElectricalNetworkSavedData. This local map is
-    // deliberately retained as a compact cache because the renderer and the
-    // existing grid solver already consume rack-local cable collections.
+    // deliberately retained as a compact rendering and interaction cache.
 
     /** The facing this rack is bolted against, read from its blockstate. */
     public Direction facing() {

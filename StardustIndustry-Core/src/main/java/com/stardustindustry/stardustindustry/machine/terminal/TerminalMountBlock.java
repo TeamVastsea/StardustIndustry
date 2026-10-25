@@ -1,6 +1,7 @@
 package com.stardustindustry.stardustindustry.machine.terminal;
 
 import java.util.List;
+import java.util.function.BiConsumer;
 
 import com.stardustindustry.stardustindustry.energy.EnergyTier;
 import com.stardustindustry.stardustindustry.energy.TerminalGrid;
@@ -17,6 +18,7 @@ import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.Explosion;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.EntityBlock;
@@ -25,6 +27,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.DirectionProperty;
+import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.storage.loot.LootParams;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.shapes.CollisionContext;
@@ -385,6 +388,12 @@ public class TerminalMountBlock extends Block implements EntityBlock {
             // reaching here means an empty hand or a plain tool.
             if (stack.isEmpty() && hasTerminalHere) {
                 if (!level.isClientSide()) {
+                    if (com.stardustindustry.stardustindustry.energy.CableService.isReadOnly(level)) {
+                        player.displayClientMessage(Component.translatable(
+                                "message.stardustindustry.cable.data_read_only")
+                                .withStyle(ChatFormatting.RED), true);
+                        return ItemInteractionResult.SUCCESS;
+                    }
                     mount.removeTerminal(cell, player);
                 }
                 return ItemInteractionResult.SUCCESS;
@@ -434,6 +443,36 @@ public class TerminalMountBlock extends Block implements EntityBlock {
             }
         }
         return ItemInteractionResult.SUCCESS;
+    }
+
+    /**
+     * Player mining must not remove a rack while newer-format cable data is being
+     * preserved opaquely. Commands and other administrative block replacement
+     * paths do not call this hook and remain available as an explicit override.
+     */
+    @Override
+    public boolean onDestroyedByPlayer(BlockState state, Level level, BlockPos pos, Player player,
+                                       boolean willHarvest, FluidState fluid) {
+        if (!level.isClientSide()
+                && com.stardustindustry.stardustindustry.energy.CableService.isReadOnly(level)) {
+            if (player != null) {
+                player.displayClientMessage(Component.translatable(
+                        "message.stardustindustry.cable.data_read_only")
+                        .withStyle(ChatFormatting.RED), true);
+            }
+            return false;
+        }
+        return super.onDestroyedByPlayer(state, level, pos, player, willHarvest, fluid);
+    }
+
+    @Override
+    protected void onExplosionHit(BlockState state, Level level, BlockPos pos, Explosion explosion,
+                                  BiConsumer<ItemStack, BlockPos> dropConsumer) {
+        if (!level.isClientSide()
+                && com.stardustindustry.stardustindustry.energy.CableService.isReadOnly(level)) {
+            return;
+        }
+        super.onExplosionHit(state, level, pos, explosion, dropConsumer);
     }
 
     /**

@@ -59,6 +59,8 @@ public final class ElectricalDiagnosticScreen extends TelemetryScreen<Electrical
         line(graphics, Component.translatable("screen.stardustindustry.telemetry.cable_voltage",
                 voltage(data.wiringId()), data.tierId().isEmpty()
                         ? "-" : data.tierId().toUpperCase(Locale.ROOT)), 10, y, TEXT); y += 14;
+        line(graphics, Component.translatable("screen.stardustindustry.telemetry.cable_voltage_drop",
+                voltageDrop(data.voltageDropVolts())), 10, y, TEXT); y += 14;
         line(graphics, Component.translatable("screen.stardustindustry.telemetry.cable_current",
                 current(data.phaseAAmps())), 10, y, TEXT); y += 14;
         line(graphics, Component.translatable("screen.stardustindustry.telemetry.cable_loss",
@@ -86,5 +88,12 @@ public final class ElectricalDiagnosticScreen extends TelemetryScreen<Electrical
         } catch (NumberFormatException ignored) {
             return id;
         }
+    }
+
+    private static String voltageDrop(double volts) {
+        if (!Double.isFinite(volts) || volts <= 0.0) return "0.00 V";
+        if (volts >= 1_000_000.0) return String.format(Locale.ROOT, "%.2f MV", volts / 1_000_000.0);
+        if (volts >= 1_000.0) return String.format(Locale.ROOT, "%.2f kV", volts / 1_000.0);
+        return String.format(Locale.ROOT, "%.2f V", volts);
     }
 }

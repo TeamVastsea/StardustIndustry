@@ -11,9 +11,9 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 /**
  * This mod's network channel.
  *
- * <p>Only one message exists so far: the parameter screen's dismantle request.
- * It is registered as a play-to-server payload and handled on the main thread,
- * so its handler may touch the world freely.</p>
+ * <p>Control requests are handled on the server thread, while telemetry snapshots are
+ * server-authored and sent to the client. The channel version must change whenever one of
+ * these payload codecs changes.</p>
  *
  * <p>The handler treats the packet as a request, not a command: it re-derives
  * everything (ownership, distance, installed state) from the server world, so a
@@ -25,7 +25,7 @@ public final class ModNetwork {
 
     /** Registers the channel and its handlers. Called on the mod event bus. */
     public static void register(RegisterPayloadHandlersEvent event) {
-        PayloadRegistrar registrar = event.registrar("1");
+        PayloadRegistrar registrar = event.registrar("2");
         registrar.playToServer(
                 DismantleRequestPayload.TYPE,
                 DismantleRequestPayload.STREAM_CODEC,

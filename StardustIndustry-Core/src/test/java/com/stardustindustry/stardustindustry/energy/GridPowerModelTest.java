@@ -17,6 +17,21 @@ import net.minecraft.core.BlockPos;
 
 class GridPowerModelTest {
     @Test
+    void liveCableTelemetryUsesTheSolvedBranchCurrentAndResistance() {
+        CableConnection cable = CableConnection.of(CableAmpacity.A150, CableInsulation.CLASS_2,
+                new TerminalEndpoint(BlockPos.ZERO, 0),
+                new TerminalEndpoint(new BlockPos(12, 0, 0), 0));
+
+        EnergizedCable live = ElectricalGridService.measureEnergizedCable(
+                cable, EnergyTier.MV.volts(), 30.0, 0.4);
+
+        assertEquals(12.0, live.voltageDropVolts(), 1.0e-9);
+        assertEquals(live.currentAmps() * live.voltageDropVolts(),
+                live.lineLossWatts(), 1.0e-9);
+        assertTrue(live.voltageDropVolts() > 0.0);
+    }
+
+    @Test
     void radialFlowUsesEachBranchCurrentAndCoolsAnIdleBranch() {
         var trunk = new RadialCableFlow.Branch<>("trunk", "source", "junction", 1.0);
         var branchA = new RadialCableFlow.Branch<>("a", "junction", "load-a", 2.0);
@@ -347,6 +362,16 @@ class GridPowerModelTest {
                 ElectricalGridService.offlineFaultWithoutSource(false));
         assertEquals(FaultKind.INCOMPLETE_WIRING,
                 ElectricalGridService.offlineFaultWithoutSource(true));
+    }
+
+    @Test
+    void electricalChunksMustBeBothTickingAndPresent() {
+        assertTrue(ElectricalChunkAvailability.isActiveNow(true, true));
+        assertFalse(ElectricalChunkAvailability.isActiveNow(false, true),
+                "a pending-unload FULL chunk is not electrically active");
+        assertFalse(ElectricalChunkAvailability.isActiveNow(true, false),
+                "a pending-load ticking ticket is not enough without the chunk");
+        assertFalse(ElectricalChunkAvailability.isActiveNow(false, false));
     }
 
     @Test

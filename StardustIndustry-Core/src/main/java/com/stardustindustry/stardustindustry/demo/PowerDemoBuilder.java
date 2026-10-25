@@ -51,8 +51,13 @@ public final class PowerDemoBuilder {
     private static final BlockPos FAULT_MIN = ORIGIN.offset(-2, 0, -17);
     private static final BlockPos FAULT_MAX = ORIGIN.offset(16, 6, -8);
     private static final int MACHINE_Y = 65;
-    /** 6.7 kW crusher load for about 45 seconds, before line losses. */
-    private static final long DEMO_STORAGE_INITIAL_JOULES = 301_500L;
+    /**
+     * 6.7 kW crusher load for about 42.5 seconds, before line losses.
+     *
+     * <p>The quarter-recipe offset is deliberate: the reserve must run dry while a recipe is
+     * active, rather than occasionally landing in the one-tick gap between consecutive recipes.</p>
+     */
+    private static final long DEMO_STORAGE_INITIAL_JOULES = 284_750L;
 
     private PowerDemoBuilder() {}
 

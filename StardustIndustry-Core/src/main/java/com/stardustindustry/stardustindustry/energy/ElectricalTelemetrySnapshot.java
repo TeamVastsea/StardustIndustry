@@ -42,6 +42,7 @@ public record ElectricalTelemetrySnapshot(
         double phaseCAmps,
         double neutralAmps,
         long lineLossWatts,
+        double voltageDropVolts,
         double efficiency,
         double maximumCableTemperatureC,
         double cableAmpacityAmps,
@@ -78,7 +79,7 @@ public record ElectricalTelemetrySnapshot(
                             ByteBufCodecs.VAR_LONG.decode(buffer),
                             buffer.readLong(),
                             buffer.readDouble(), buffer.readDouble(), buffer.readDouble(), buffer.readDouble(),
-                            ByteBufCodecs.VAR_LONG.decode(buffer), buffer.readDouble(),
+                            ByteBufCodecs.VAR_LONG.decode(buffer), buffer.readDouble(), buffer.readDouble(),
                             buffer.readDouble(), buffer.readDouble(),
                             ByteBufCodecs.VAR_LONG.decode(buffer), ByteBufCodecs.VAR_LONG.decode(buffer),
                             buffer.readLong(), ByteBufCodecs.VAR_INT.decode(buffer));
@@ -105,6 +106,7 @@ public record ElectricalTelemetrySnapshot(
                     buffer.writeDouble(value.phaseCAmps);
                     buffer.writeDouble(value.neutralAmps);
                     ByteBufCodecs.VAR_LONG.encode(buffer, value.lineLossWatts);
+                    buffer.writeDouble(value.voltageDropVolts);
                     buffer.writeDouble(value.efficiency);
                     buffer.writeDouble(value.maximumCableTemperatureC);
                     buffer.writeDouble(value.cableAmpacityAmps);
@@ -126,6 +128,7 @@ public record ElectricalTelemetrySnapshot(
         requestedPowerWatts = Math.max(0L, requestedPowerWatts);
         deliveredPowerWatts = Math.max(0L, deliveredPowerWatts);
         lineLossWatts = Math.max(0L, lineLossWatts);
+        voltageDropVolts = finite(voltageDropVolts, 0.0, Double.MAX_VALUE);
         efficiency = finite(efficiency, 0.0, 1.0);
         maximumCableTemperatureC = finite(maximumCableTemperatureC, 0.0, 10_000.0);
         cableAmpacityAmps = finite(cableAmpacityAmps, 0.0, Double.MAX_VALUE);
@@ -180,6 +183,7 @@ public record ElectricalTelemetrySnapshot(
         int volts = live == null ? 0 : live.volts();
         double currentAmps = live == null ? 0.0 : live.currentAmps();
         long lineLossWatts = live == null ? 0L : live.lineLossWatts();
+        double voltageDropVolts = live == null ? 0.0 : live.voltageDropVolts();
         double temperatureC = 20.0 + (thermal == null ? 0.0 : thermal.heat()) * 180.0;
         EnergyTier tier = tierForVolts(volts);
         return new ElectricalTelemetrySnapshot(
@@ -203,6 +207,7 @@ public record ElectricalTelemetrySnapshot(
                 0.0,
                 0.0,
                 lineLossWatts,
+                voltageDropVolts,
                 0.0,
                 temperatureC,
                 cable.effectiveAmpacity(),
@@ -278,14 +283,14 @@ public record ElectricalTelemetrySnapshot(
                 Subject.TERMINAL, energized, energized, true, false,
                 id(tier), "", FaultKind.NONE.name().toLowerCase(Locale.ROOT), "",
                 0L, 0L, 0L, 0.0, 0.0, 0.0, 0.0,
-                0L, 0.0, cables.temperatureC(), cables.ampacity(), 0L, 0L, -1L, 0);
+                0L, 0.0, 0.0, cables.temperatureC(), cables.ampacity(), 0L, 0L, -1L, 0);
     }
 
     private static ElectricalTelemetrySnapshot empty(ServerLevel level, BlockPos pos) {
         return new ElectricalTelemetrySnapshot(pos, level.getBlockState(pos).getBlock().getDescriptionId(),
                 Subject.UNKNOWN, false, false, false, false, "", "",
                 FaultKind.NONE.name().toLowerCase(Locale.ROOT), "", 0L, 0L, 0L,
-                0.0, 0.0, 0.0, 0.0, 0L, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0, 0L, 0.0, 0.0, 0.0, 0.0,
                 0L, 0L, -1L, 0);
     }
 
@@ -309,7 +314,7 @@ public record ElectricalTelemetrySnapshot(
                 actual.sourceSwitchClosed(), formed, running, id(tier), wiring.id(),
                 actual.fault().name().toLowerCase(Locale.ROOT), safe(mode), requested,
                 actual.deliveredPowerWatts(), actual.netPowerWatts(), a, b, c, neutral,
-                actual.lineLossWatts(), actual.efficiency(), cables.temperatureC(), cables.ampacity(),
+                actual.lineLossWatts(), 0.0, actual.efficiency(), cables.temperatureC(), cables.ampacity(),
                 stored, capacity, estimatedSeconds, progress);
     }
 
@@ -388,6 +393,7 @@ public record ElectricalTelemetrySnapshot(
                 || relativeDifference(deliveredPowerWatts, other.deliveredPowerWatts) >= 0.05
                 || relativeDifference(netPowerWatts, other.netPowerWatts) >= 0.05
                 || relativeDifference(lineLossWatts, other.lineLossWatts) >= 0.05
+                || relativeDifference(voltageDropVolts, other.voltageDropVolts) >= 0.05
                 || Math.abs(phaseAAmps - other.phaseAAmps) >= 1.0
                 || Math.abs(efficiency - other.efficiency) >= 0.01
                 || Math.abs(maximumCableTemperatureC - other.maximumCableTemperatureC) >= 2.0
@@ -401,6 +407,11 @@ public record ElectricalTelemetrySnapshot(
     private static double relativeDifference(long first, long second) {
         long scale = Math.max(1L, Math.max(Math.abs(first), Math.abs(second)));
         return Math.abs((double) first - second) / scale;
+    }
+
+    private static double relativeDifference(double first, double second) {
+        double scale = Math.max(1.0, Math.max(Math.abs(first), Math.abs(second)));
+        return Math.abs(first - second) / scale;
     }
 
     private static Subject subject(String id) {

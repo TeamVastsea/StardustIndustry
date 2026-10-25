@@ -45,6 +45,7 @@ public record CableMutationResult(Status status, CableConnection cable) {
         WOULD_CREATE_CYCLE,
         NOT_PAINTABLE,
         PRODUCT_MISMATCH,
-        TOMBSTONED
+        TOMBSTONED,
+        UNSUPPORTED_DATA_VERSION
     }
 }

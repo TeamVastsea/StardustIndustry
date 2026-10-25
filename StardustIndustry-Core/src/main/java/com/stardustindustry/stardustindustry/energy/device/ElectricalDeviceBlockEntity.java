@@ -419,8 +419,10 @@ public final class ElectricalDeviceBlockEntity extends BlockEntity {
                 || !inputState.sourceSwitchClosed()) {
             return false;
         }
+        if (inputState.fault() == FaultKind.UNDERVOLTAGE) {
+            return inputState.deliveredPowerWatts() > 0L;
+        }
         return inputState.fault() == FaultKind.NONE
-                || inputState.fault() == FaultKind.UNDERVOLTAGE
                 || inputState.fault() == FaultKind.OVERCURRENT;
     }
 
