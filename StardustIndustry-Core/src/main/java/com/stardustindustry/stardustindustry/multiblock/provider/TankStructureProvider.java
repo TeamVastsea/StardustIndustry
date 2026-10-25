@@ -211,11 +211,11 @@ public final class TankStructureProvider implements StructureProvider {
         }
 
         if (failures.isEmpty()) {
-            com.stardustindustry.stardustindustry.multiblock.TankMembershipRegistry
+            com.stardustindustry.stardustindustry.multiblock.MultiblockMembershipRegistry
                     .register(level, controller, shell);
             return StructureEvaluation.formed(null, ModifierSet.BASE, roles, Map.of());
         }
-        com.stardustindustry.stardustindustry.multiblock.TankMembershipRegistry.clear(level, controller);
+        com.stardustindustry.stardustindustry.multiblock.MultiblockMembershipRegistry.clear(level, controller);
         return StructureEvaluation.failed(null, failures, roles, Map.of());
     }
 

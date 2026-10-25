@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": ["ANA", "NCN", "ANA"],
+  "key": {
+    "A": { "item": "minecraft:amethyst_shard" },
+    "N": { "item": "minecraft:netherite_ingot" },
+    "C": { "item": "stardustindustry:hv_storage_cell" }
+  },
+  "result": { "id": "stardustindustry:ehv_storage_cell" }
+}

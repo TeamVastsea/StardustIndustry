@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": ["ENE", "NCN", "ENE"],
+  "key": {
+    "E": { "item": "minecraft:emerald" },
+    "N": { "item": "minecraft:netherite_scrap" },
+    "C": { "item": "stardustindustry:mv_storage_cell" }
+  },
+  "result": { "id": "stardustindustry:hv_storage_cell" }
+}

@@ -1,0 +1,6 @@
+{
+  "parent": "stardustindustry:block/creative_power_source",
+  "textures": {
+    "front": "stardustindustry:block/creative_power_source_front_powered"
+  }
+}

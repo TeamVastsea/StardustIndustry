@@ -1,5 +1,7 @@
 package com.stardustindustry.stardustindustry;
 
+import java.io.IOException;
+
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModContainer;
@@ -31,6 +33,10 @@ public class StardustIndustryClient {
         event.enqueueWork(() -> com.stardustindustry.stardustindustry.energy.TerminalGeometry.setAnchorSource(
                 modelKey -> com.stardustindustry.stardustindustry.client.TerminalModelConfigs
                         .get(modelKey).anchorOffset()));
+        // Camera access is client-only; install it behind a common-side hook so
+        // the terminal block can also load safely on dedicated servers.
+        event.enqueueWork(() -> com.stardustindustry.stardustindustry.machine.terminal.CablePicking
+                .installClientPicker(com.stardustindustry.stardustindustry.client.ClientCablePicker::pick));
         // Give the crusher a spinning rotor. Animation is registered per machine
         // type from the client layer, so the crusher stays a plain common-side
         // class and a machine with no animator simply stands still.
@@ -86,6 +92,13 @@ public class StardustIndustryClient {
     @SubscribeEvent
     static void onClone(net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent.Clone event) {
         com.stardustindustry.stardustindustry.energy.PendingCable.clear();
+    }
+
+    /** Registers the local-space terminal shader used by the static geometry cache. */
+    @SubscribeEvent
+    static void onRegisterShaders(net.neoforged.neoforge.client.event.RegisterShadersEvent event)
+            throws IOException {
+        com.stardustindustry.stardustindustry.client.TerminalRenderTypes.registerShaders(event);
     }
 
     @SubscribeEvent

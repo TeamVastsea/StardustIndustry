@@ -83,7 +83,7 @@ public final class ItemInventoryModule implements MachineModule, ModuleHost.Reso
 
     /** The number of non-empty slots, reported to the machine host for diagnostics. */
     @Override
-    public int buffered() {
+    public long buffered() {
         int count = 0;
         for (int i = 0; i < size; i++) {
             if (!handler.getStackInSlot(i).isEmpty()) {

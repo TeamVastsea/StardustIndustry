@@ -1,0 +1,5 @@
+{
+  "multipart": [
+    { "apply": { "model": "stardustindustry:block/ehv_energy_port" } }
+  ]
+}

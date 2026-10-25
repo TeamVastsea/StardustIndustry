@@ -1,0 +1,6 @@
+{
+  "parent": "stardustindustry:block/fuel_generator",
+  "textures": {
+    "front": "stardustindustry:block/fuel_generator_front_powered"
+  }
+}

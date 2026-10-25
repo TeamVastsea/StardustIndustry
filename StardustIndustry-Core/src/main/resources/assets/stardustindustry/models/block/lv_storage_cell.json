@@ -1,0 +1,8 @@
+{
+  "parent": "minecraft:block/cube_bottom_top",
+  "textures": {
+    "bottom": "stardustindustry:block/lv_storage_cell_bottom",
+    "top": "stardustindustry:block/lv_storage_cell_top",
+    "side": "stardustindustry:block/lv_storage_cell_side"
+  }
+}

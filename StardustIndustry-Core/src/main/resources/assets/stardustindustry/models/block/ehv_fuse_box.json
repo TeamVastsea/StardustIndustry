@@ -1,0 +1,10 @@
+{
+  "parent": "stardustindustry:block/electrical_orientable",
+  "textures": {
+    "bottom": "stardustindustry:block/electrical_chassis_bottom",
+    "top": "stardustindustry:block/ehv_fuse_box_top",
+    "front": "stardustindustry:block/ehv_fuse_box_front",
+    "back": "stardustindustry:block/ehv_fuse_box_back",
+    "side": "stardustindustry:block/ehv_fuse_box_side"
+  }
+}

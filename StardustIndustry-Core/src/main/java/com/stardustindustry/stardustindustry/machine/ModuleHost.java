@@ -111,7 +111,7 @@ public final class ModuleHost {
     }
 
     /** Total resource amount currently buffered, for diagnostics and GUIs. */
-    public int buffered(ResourceType type) {
+    public long buffered(ResourceType type) {
         MachineModule module = providers.get(type);
         if (module instanceof ResourceHolder holder) {
             return holder.buffered();
@@ -124,6 +124,6 @@ public final class ModuleHost {
      * collection can report a single number without knowing the module's shape.
      */
     public interface ResourceHolder {
-        int buffered();
+        long buffered();
     }
 }

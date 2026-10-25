@@ -1,0 +1,10 @@
+{
+  "parent": "stardustindustry:block/electrical_orientable",
+  "textures": {
+    "bottom": "minecraft:block/obsidian",
+    "top": "minecraft:block/obsidian",
+    "front": "minecraft:block/redstone_lamp",
+    "back": "minecraft:block/target_top",
+    "side": "minecraft:block/sea_lantern"
+  }
+}

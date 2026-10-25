@@ -243,7 +243,10 @@ public class MachineParamsScreen extends AbstractContainerScreen<MachineParamsMe
 
         if (data.energyMax() >= 0) {
             lines.add(Component.translatable("screen.stardustindustry.machine_params.energy_stored",
-                    data.energyStored(), data.energyMax()));
+                    com.stardustindustry.stardustindustry.energy.ElectricalUnits.formatKilowattHours(
+                            data.energyStored()),
+                    com.stardustindustry.stardustindustry.energy.ElectricalUnits.formatKilowattHours(
+                            data.energyMax())));
         }
 
         if (data.fluidCapacity() >= 0) {

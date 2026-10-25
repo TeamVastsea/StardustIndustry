@@ -1,0 +1,6 @@
+{
+  "parent": "stardustindustry:block/lv_fuse_box",
+  "textures": {
+    "front": "stardustindustry:block/lv_fuse_box_front_powered"
+  }
+}

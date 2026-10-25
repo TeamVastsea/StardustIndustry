@@ -107,8 +107,19 @@ public class TerminalMountBlockEntity extends BlockEntity {
     public void onLoad() {
         super.onLoad();
         if (level != null && !level.isClientSide()) {
+            com.stardustindustry.stardustindustry.energy.ElectricalGridService.registerRack(this);
+        }
+        if (level != null && !level.isClientSide()) {
             pruneOrphanCables();
         }
+    }
+
+    @Override
+    public void setRemoved() {
+        if (level != null && !level.isClientSide()) {
+            com.stardustindustry.stardustindustry.energy.ElectricalGridService.unregisterRack(this);
+        }
+        super.setRemoved();
     }
 
     /** Drops every cable half on this rack whose other endpoint is gone. */
@@ -189,6 +200,11 @@ public class TerminalMountBlockEntity extends BlockEntity {
     /** Number of terminals currently bolted on. */
     public int terminalCount() {
         return terminals.size();
+    }
+
+    /** Stable cell order used to assign the conductors of a machine port. */
+    public java.util.Set<Integer> terminalCells() {
+        return java.util.Collections.unmodifiableSet(terminals.keySet());
     }
 
     /** Bolts a terminal of {@code style} onto {@code cell}. */
@@ -553,7 +569,7 @@ public class TerminalMountBlockEntity extends BlockEntity {
      * The cable on {@code rack} that the aim ray touched, or {@code null}.
      *
      * <p>The ray is tested in <b>world space</b> against the same hanging curve the
-     * renderer draws ({@link com.stardustindustry.stardustindustry.energy.TerminalGeometry#isNearCable}),
+     * renderer draws ({@link com.stardustindustry.stardustindustry.energy.CableGeometry#isNear}),
      * not against the block's collision box: a cable has no collision box, and the
      * rack's box is the plate. The nearest cable to the ray wins, so two parallel
      * runs can be told apart.</p>
@@ -587,7 +603,7 @@ public class TerminalMountBlockEntity extends BlockEntity {
                 continue;
             }
             Vec3 probe = new Vec3(from.x + direction.x * t, from.y + direction.y * t, from.z + direction.z * t);
-            if (com.stardustindustry.stardustindustry.energy.TerminalGeometry.isNearCable(
+            if (com.stardustindustry.stardustindustry.energy.CableGeometry.isNear(
                     a, b, probe, pickRadius, cable.sagMultiplier())) {
                 best = cable;
                 bestDistance = t;

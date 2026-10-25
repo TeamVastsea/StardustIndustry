@@ -9,7 +9,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import org.joml.Vector3f;
 
-import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
 
 /**
@@ -93,13 +92,10 @@ public final class TerminalModelBounds {
      * a conservative box rather than losing its collision entirely.</p>
      */
     public static Box of(ResourceManager manager, TerminalStyle style) {
-        if (manager == null) {
-            return null;
-        }
         // Identity, not equals: two reloads can hand back managers that compare
         // equal while serving different files. A new manager therefore has to be
         // a new key, and old managers are dropped when clearCache runs on reload.
-        Key key = new Key(style.model(), System.identityHashCode(manager));
+        Key key = new Key(style.model(), TerminalAssetResources.managerId(manager));
         Box cached = CACHE.get(key);
         if (cached != null) {
             return cached;
@@ -115,13 +111,13 @@ public final class TerminalModelBounds {
     private static Box parse(ResourceManager manager, TerminalStyle style) {
         var id = com.stardustindustry.stardustindustry.StardustIndustry.id(
                 "models/block/terminal_" + style.model() + ".obj");
-        Resource resource = manager.getResource(id).orElse(null);
-        if (resource == null) {
-            return null;
-        }
-        try (InputStream in = resource.open();
-             BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
-            return parseVertices(reader);
+        try (InputStream in = TerminalAssetResources.open(manager, id)) {
+            if (in == null) {
+                return null;
+            }
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
+                return parseVertices(reader);
+            }
         } catch (Exception e) {
             com.stardustindustry.stardustindustry.StardustIndustry.LOGGER.warn(
                     "Could not read the vertex extent of {} ({}); terminals of style {} get a "

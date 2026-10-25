@@ -1,0 +1,10 @@
+{
+  "parent": "stardustindustry:block/electrical_orientable",
+  "textures": {
+    "bottom": "minecraft:block/cut_copper",
+    "top": "minecraft:block/cut_copper",
+    "front": "minecraft:block/furnace_front",
+    "back": "minecraft:block/furnace_side",
+    "side": "minecraft:block/copper_block"
+  }
+}

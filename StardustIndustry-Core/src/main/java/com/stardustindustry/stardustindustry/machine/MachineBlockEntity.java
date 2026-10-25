@@ -1,9 +1,12 @@
 package com.stardustindustry.stardustindustry.machine;
 
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 import com.stardustindustry.stardustindustry.capability.ResourceType;
-import com.stardustindustry.stardustindustry.machine.module.EnergyBufferModule;
+import com.stardustindustry.stardustindustry.machine.module.JouleStorageModule;
 import com.stardustindustry.stardustindustry.multiblock.StructureDefinition;
 import com.stardustindustry.stardustindustry.multiblock.StructureMatchResult;
 import com.stardustindustry.stardustindustry.multiblock.StructureMatcher;
@@ -52,6 +55,16 @@ public abstract class MachineBlockEntity extends BlockEntity {
     private Map<BlockPos, BlockState> structureBaseline;
     /** Latest provider-based evaluation, or {@code null} for definition-based machines. */
     private com.stardustindustry.stardustindustry.multiblock.provider.StructureEvaluation evaluation;
+    /**
+     * Ports currently bound to this controller.
+     *
+     * <p>This survives a controller chunk unload. Capability caches at a port
+     * may otherwise retain a module owned by the old block-entity instance when
+     * the controller is loaded again. Keeping only the positions lets lifecycle
+     * hooks invalidate those caches without touching the port's persistent
+     * controller binding.</p>
+     */
+    private final Set<BlockPos> knownPortPositions = new HashSet<>();
     /** True once the machine has been installed (static machines lock on install). */
     private boolean installed;
     /**
@@ -156,10 +169,10 @@ public abstract class MachineBlockEntity extends BlockEntity {
         // cannot pay simply finds no energy and stalls (progress is kept), which
         // is the agreed behaviour on power loss.
         chargeIdleDraw();
-        modules.serverTick();
 
         // Modules only run inside a complete structure. Singles are always formed.
         if (formed) {
+            modules.serverTick();
             serverTickFormed(level, pos, state);
         } else {
             serverTickUnformed(level, pos, state);
@@ -181,6 +194,7 @@ public abstract class MachineBlockEntity extends BlockEntity {
     private boolean powered;
     /** True once at least one tick has run, so a fresh machine does not begin unpowered. */
     private boolean powerInitialised;
+    private long idleEnergyRemainder;
 
     /**
      * Charges this tick's idle draw from the machine's energy buffer.
@@ -196,24 +210,26 @@ public abstract class MachineBlockEntity extends BlockEntity {
             powerInitialised = true;
             return;
         }
-        EnergyBufferModule buffer = modules.get(EnergyBufferModule.class);
+        JouleStorageModule buffer = modules.get(JouleStorageModule.class);
         if (buffer == null) {
             // Not an electric machine: nothing to charge.
             powered = true;
             powerInitialised = true;
             return;
         }
-        int draw = idleDraw();
-        powered = buffer.extract(draw, false) >= draw;
+        var tickEnergy = com.stardustindustry.stardustindustry.energy.ElectricalUnits.tickEnergy(
+                idleDrawWatts(), idleEnergyRemainder);
+        long draw = tickEnergy.joules();
+        powered = buffer.extractJoules(draw, false) >= draw;
+        if (powered) {
+            idleEnergyRemainder = tickEnergy.remainderWattTicks();
+        }
         powerInitialised = true;
     }
 
-    /** The per-tick idle draw in FE before filler effects. */
-    protected int idleDraw() {
-        // Charged at the machine tier's power class: small, but enough that a
-        // machine with no power line visibly stalls rather than running forever
-        // for free. (The physical line voltage is tier.energyTier().volts().)
-        return tier.energyTier().powerClass();
+    /** Continuous standby demand in watts. */
+    protected long idleDrawWatts() {
+        return 100L << tier.ordinal();
     }
 
     /** True when the machine currently has enough energy to run. */
@@ -273,16 +289,13 @@ public abstract class MachineBlockEntity extends BlockEntity {
             return formed;
         }
 
+        com.stardustindustry.stardustindustry.multiblock.provider.StructureEvaluation previous = this.evaluation;
         com.stardustindustry.stardustindustry.multiblock.provider.StructureEvaluation result =
                 provider.evaluate(level, worldPosition, facing());
-        this.evaluation = result;
 
         boolean nowFormed = result.formed();
-        if (nowFormed) {
-            bindProviderPorts(level, result);
-        } else {
-            unbindProviderPorts(level, result);
-        }
+        reconcileProviderPorts(level, previous, result);
+        this.evaluation = result;
 
         updateClientFailures(result.failures());
         // Push the new formed state and failures to clients so the projection
@@ -373,28 +386,100 @@ public abstract class MachineBlockEntity extends BlockEntity {
         return java.util.Collections.unmodifiableList(ledger);
     }
 
-    /** Binds every port the evaluation observed to this controller. */
-    private void bindProviderPorts(Level level, com.stardustindustry.stardustindustry.multiblock.provider.StructureEvaluation result) {
-        for (Map.Entry<BlockPos, com.stardustindustry.stardustindustry.multiblock.BlockRole> entry : result.roles().entrySet()) {
-            if (entry.getValue() != com.stardustindustry.stardustindustry.multiblock.BlockRole.PORT) {
-                continue;
-            }
-            if (level.getBlockEntity(entry.getKey()) instanceof MachinePortBlockEntity port) {
+    /** Reconciles persisted bindings with the provider's latest complete result. */
+    private void reconcileProviderPorts(
+            Level level,
+            com.stardustindustry.stardustindustry.multiblock.provider.StructureEvaluation previous,
+            com.stardustindustry.stardustindustry.multiblock.provider.StructureEvaluation current) {
+        Set<BlockPos> previouslyBound = new HashSet<>(knownPortPositions);
+        if (previous != null) {
+            previouslyBound.addAll(providerPortPositions(previous));
+        }
+
+        Set<BlockPos> retained = current.formed() ? providerPortPositions(current) : Set.of();
+        for (BlockPos removed : removedPortPositions(previouslyBound, retained)) {
+            unbindPort(level, removed);
+        }
+        for (BlockPos portPos : retained) {
+            if (level.getBlockEntity(portPos) instanceof MachinePortBlockEntity port) {
                 port.bind(worldPosition);
             }
         }
+        replaceKnownPortPositions(retained);
     }
 
-    /** Clears the controller reference from every bound port when the structure breaks. */
-    private void unbindProviderPorts(Level level, com.stardustindustry.stardustindustry.multiblock.provider.StructureEvaluation result) {
-        for (Map.Entry<BlockPos, com.stardustindustry.stardustindustry.multiblock.BlockRole> entry : result.roles().entrySet()) {
-            if (entry.getValue() != com.stardustindustry.stardustindustry.multiblock.BlockRole.PORT) {
-                continue;
+    /** Extracts the ports from a provider snapshot without retaining the snapshot itself. */
+    static Set<BlockPos> providerPortPositions(
+            com.stardustindustry.stardustindustry.multiblock.provider.StructureEvaluation evaluation) {
+        Set<BlockPos> ports = new HashSet<>();
+        for (Map.Entry<BlockPos, com.stardustindustry.stardustindustry.multiblock.BlockRole> entry
+                : evaluation.roles().entrySet()) {
+            if (entry.getValue() == com.stardustindustry.stardustindustry.multiblock.BlockRole.PORT) {
+                ports.add(entry.getKey().immutable());
             }
-            if (level.getBlockEntity(entry.getKey()) instanceof MachinePortBlockEntity port
-                    && worldPosition.equals(port.controllerPos())) {
-                port.unbind();
-            }
+        }
+        return ports;
+    }
+
+    /** Set difference used when an evaluation drops a formerly bound port. */
+    static Set<BlockPos> removedPortPositions(Collection<BlockPos> previous, Collection<BlockPos> retained) {
+        Set<BlockPos> removed = new HashSet<>(previous);
+        removed.removeAll(retained);
+        return removed;
+    }
+
+    private void unbindPort(Level level, BlockPos portPos) {
+        if (level.getBlockEntity(portPos) instanceof MachinePortBlockEntity port
+                && worldPosition.equals(port.controllerPos())) {
+            port.unbind();
+        }
+    }
+
+    private void replaceKnownPortPositions(Collection<BlockPos> positions) {
+        Set<BlockPos> replacement = new HashSet<>();
+        for (BlockPos position : positions) {
+            replacement.add(position.immutable());
+        }
+        if (knownPortPositions.equals(replacement)) {
+            return;
+        }
+        knownPortPositions.clear();
+        knownPortPositions.addAll(replacement);
+        setChanged();
+    }
+
+    /**
+     * Accepts a binding restored from a port's NBT.
+     *
+     * <p>Once this controller has evaluated, that snapshot is authoritative. A
+     * late-loading port excluded by the first post-reload evaluation must clear
+     * its old NBT binding instead of registering itself back as a ghost port.</p>
+     */
+    final boolean rememberBoundPort(BlockPos portPos) {
+        if (evaluation != null
+                && (!evaluation.formed()
+                || evaluation.roles().get(portPos)
+                != com.stardustindustry.stardustindustry.multiblock.BlockRole.PORT)) {
+            return false;
+        }
+        // An installed static machine cannot be re-scanned because its body is
+        // hidden. Its persisted ledger/known set is therefore the authority.
+        if (evaluation == null && installed && !knownPortPositions.contains(portPos)) {
+            return false;
+        }
+        if (knownPortPositions.add(portPos.immutable())) {
+            setChanged();
+        }
+        return true;
+    }
+
+    /** Invalidates consumers without changing either side's persistent binding. */
+    private void invalidateKnownPortCapabilities() {
+        if (level == null) {
+            return;
+        }
+        for (BlockPos portPos : knownPortPositions) {
+            level.invalidateCapabilities(portPos);
         }
     }
 
@@ -453,29 +538,34 @@ public abstract class MachineBlockEntity extends BlockEntity {
      * binding idempotent and self-healing after a chunk reload.
      */
     private void bindPorts(Level level, StructureMatchResult result, StructureDefinition definition) {
+        Set<BlockPos> bound = new HashSet<>();
         for (StructurePart part : definition.parts()) {
             if (!part.role().isPort()) {
                 continue;
             }
             BlockPos worldPos = result.worldPos(part.offset());
+            bound.add(worldPos.immutable());
             if (level.getBlockEntity(worldPos) instanceof MachinePortBlockEntity port) {
                 port.bind(worldPosition);
             }
         }
+        replaceKnownPortPositions(bound);
     }
 
     /** Clears the controller reference from every port of a broken structure. */
     private void unbindPorts(Level level, StructureDefinition definition) {
+        Set<BlockPos> ports = new HashSet<>(knownPortPositions);
         for (StructurePart part : definition.parts()) {
             if (!part.role().isPort()) {
                 continue;
             }
             BlockPos worldPos = worldPosition.offset(StructureRotation.rotate(part.offset(), StructureRotation.forFacing(facing())));
-            if (level.getBlockEntity(worldPos) instanceof MachinePortBlockEntity port
-                    && worldPosition.equals(port.controllerPos())) {
-                port.unbind();
-            }
+            ports.add(worldPos.immutable());
         }
+        for (BlockPos portPos : ports) {
+            unbindPort(level, portPos);
+        }
+        replaceKnownPortPositions(Set.of());
     }
 
     /** Forces a re-check ignoring the timer, e.g. after a neighbour changes. */
@@ -560,11 +650,19 @@ public abstract class MachineBlockEntity extends BlockEntity {
         }
     }
 
-    @Override
-    public void setRemoved() {
-        // A controller that is broken must not leave dangling ports pointing at
-        // a dead position, or pipes would keep trying to reach a ghost machine.
+    /**
+     * Cleans up persistent machine state when the controller block is actually removed.
+     *
+     * <p>This must not run from {@link #setRemoved()}: Minecraft also calls that
+     * lifecycle hook while unloading a chunk, where restoring the structure and
+     * clearing its contents would silently dismantle a valid machine.</p>
+     */
+    public final void onControllerRemoved() {
+        // A broken controller must not leave dangling ports pointing at a dead
+        // position, or pipes would keep trying to reach a ghost machine.
         if (level != null && !level.isClientSide()) {
+            com.stardustindustry.stardustindustry.multiblock.MultiblockMembershipRegistry
+                    .clear(level, worldPosition);
             if (installed) {
                 // The controller is gone: restore the rest of the machine and drop
                 // its contents, or the shell would be stranded invisible.
@@ -580,12 +678,36 @@ public abstract class MachineBlockEntity extends BlockEntity {
                 installed = false;
             }
             if (evaluation != null) {
-                unbindProviderPorts(level, evaluation);
+                for (BlockPos portPos : providerPortPositions(evaluation)) {
+                    unbindPort(level, portPos);
+                }
             }
             StructureDefinition definition = definition();
             if (definition != null) {
                 unbindPorts(level, definition);
+            } else {
+                for (BlockPos portPos : Set.copyOf(knownPortPositions)) {
+                    unbindPort(level, portPos);
+                }
+                replaceKnownPortPositions(Set.of());
             }
+        }
+    }
+
+    @Override
+    public void onLoad() {
+        super.onLoad();
+        if (level != null && !level.isClientSide()) {
+            invalidateKnownPortCapabilities();
+        }
+    }
+
+    @Override
+    public void setRemoved() {
+        // Chunk unload is not a structure break. Keep the binding and all machine
+        // state, but evict capabilities that still reference this BE instance.
+        if (level != null && !level.isClientSide()) {
+            invalidateKnownPortCapabilities();
         }
         super.setRemoved();
     }
@@ -615,12 +737,12 @@ public abstract class MachineBlockEntity extends BlockEntity {
         String tierName = eval != null && eval.tier() != null ? eval.tier().getSerializedName() : "";
         var mods = modifiers();
 
-        int stored = -1;
-        int max = -1;
-        EnergyBufferModule buffer = modules.get(EnergyBufferModule.class);
+        long stored = -1L;
+        long max = -1L;
+        JouleStorageModule buffer = modules.get(JouleStorageModule.class);
         if (buffer != null) {
-            stored = buffer.stored();
-            max = buffer.capacity();
+            stored = buffer.storedJoules();
+            max = buffer.capacityJoules();
         }
 
         int fillerCount = 0;
@@ -712,7 +834,9 @@ public abstract class MachineBlockEntity extends BlockEntity {
             return false;
         }
 
+        var previous = this.evaluation;
         var result = provider.evaluate(level, worldPosition, facing());
+        reconcileProviderPorts(level, previous, result);
         this.evaluation = result;
         if (!result.formed()) {
             if (formed) {
@@ -888,6 +1012,14 @@ public abstract class MachineBlockEntity extends BlockEntity {
             }
             tag.put("Ledger", list);
         }
+        if (!knownPortPositions.isEmpty()) {
+            long[] positions = new long[knownPortPositions.size()];
+            int index = 0;
+            for (BlockPos position : knownPortPositions) {
+                positions[index++] = position.asLong();
+            }
+            tag.putLongArray("KnownPorts", positions);
+        }
     }
 
     @Override
@@ -904,6 +1036,19 @@ public abstract class MachineBlockEntity extends BlockEntity {
                 PlacedPart part = PlacedPart.load(list.getCompound(i));
                 if (part != null) {
                     ledger.add(part);
+                }
+            }
+        }
+        knownPortPositions.clear();
+        for (long encoded : tag.getLongArray("KnownPorts")) {
+            knownPortPositions.add(BlockPos.of(encoded));
+        }
+        // Static installed machines from older saves have no KnownPorts tag, but
+        // their ledger is authoritative and their hidden body must not be scanned.
+        if (knownPortPositions.isEmpty() && installed) {
+            for (PlacedPart part : ledger) {
+                if (com.stardustindustry.stardustindustry.multiblock.BlockRole.PORT.name().equals(part.role())) {
+                    knownPortPositions.add(part.worldPos().immutable());
                 }
             }
         }

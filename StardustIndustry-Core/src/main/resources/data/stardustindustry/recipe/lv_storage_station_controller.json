@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": ["RPR", "CSC", "RPR"],
+  "key": {
+    "R": { "item": "minecraft:redstone" },
+    "P": { "item": "stardustindustry:lv_energy_port" },
+    "C": { "item": "minecraft:comparator" },
+    "S": { "item": "stardustindustry:storage_station_casing" }
+  },
+  "result": { "id": "stardustindustry:lv_storage_station_controller" }
+}

@@ -53,6 +53,21 @@ public class InstallationToolItem extends Item {
         BlockPos pos = context.getClickedPos();
         Player player = context.getPlayer();
 
+        BlockEntity clicked = level.getBlockEntity(pos);
+        if (player != null && !player.isShiftKeyDown()
+                && clicked instanceof com.stardustindustry.stardustindustry.machine.port.EnergyPortBlockEntity port
+                && port.canConfigureWiring()) {
+            if (level.isClientSide()) {
+                return InteractionResult.SUCCESS;
+            }
+            port.cycleWiring();
+            player.displayClientMessage(Component.translatable(
+                    "message.stardustindustry.electrical.wiring.configured",
+                    Component.translatable("message.stardustindustry.electrical.wiring." + port.wiring().id()),
+                    port.wiring().requiredConductors()).withStyle(ChatFormatting.GRAY), true);
+            return InteractionResult.CONSUME;
+        }
+
         // The clicked block may be the controller itself, a port, or a hidden
         // structure cell. Only the first is a machine block entity; the other two
         // resolve to their controller, so sneak-right-click works anywhere on the
@@ -107,8 +122,14 @@ public class InstallationToolItem extends Item {
         if (be instanceof InvisibleStructureBlockEntity invisible) {
             return invisible.controller();
         }
-        // A tank's frame and glass have no block entity of their own, so their
-        // controller is resolved through the tank membership table.
+        // Dynamic structures contain inert frame, glass and internal blocks.
+        // Their providers populate one shared membership cache when formed.
+        BlockPos controller = com.stardustindustry.stardustindustry.multiblock.MultiblockMembershipRegistry
+                .controllerOf(level, pos);
+        if (controller != null && level.getBlockEntity(controller) instanceof MachineBlockEntity machine) {
+            return machine;
+        }
+        // Tank HUD integrations can recover from a cold cache by scanning.
         if (com.stardustindustry.stardustindustry.multiblock.provider.TankStructureProvider
                 .isTankMaterial(level.getBlockState(pos))) {
             return com.stardustindustry.stardustindustry.machine.tank.TankHudAccess.findTank(level, pos);
@@ -284,6 +305,8 @@ public class InstallationToolItem extends Item {
         tooltip.add(Component.translatable("item.stardustindustry.installation_tool.tip.install")
                 .withStyle(ChatFormatting.GRAY));
         tooltip.add(Component.translatable("item.stardustindustry.installation_tool.tip.dismantle")
+                .withStyle(ChatFormatting.GRAY));
+        tooltip.add(Component.translatable("item.stardustindustry.installation_tool.tip.wiring")
                 .withStyle(ChatFormatting.GRAY));
     }
 

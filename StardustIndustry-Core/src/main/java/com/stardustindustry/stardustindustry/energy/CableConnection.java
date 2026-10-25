@@ -80,6 +80,11 @@ public record CableConnection(CableAmpacity ampacity, CableInsulation insulation
         return new CableConnection(ampacity, insulation, newColor, a, b);
     }
 
+    /** Electrical identity shared by every cosmetic colour of this run. */
+    public CableRunKey runKey() {
+        return new CableRunKey(ampacity, insulation, a, b);
+    }
+
     /** The other end from {@code endpoint}, or {@code null} when it is not on this cable. */
     public TerminalEndpoint other(TerminalEndpoint endpoint) {
         if (a.equals(endpoint)) {
@@ -104,9 +109,9 @@ public record CableConnection(CableAmpacity ampacity, CableInsulation insulation
         return ohmsPerBlock() * blocks;
     }
 
-    /** Ohms per block for this cable, sheath and material included. */
+    /** Ohms per block for this conductor. Insulation derates ampacity, not resistance. */
     public float ohmsPerBlock() {
-        return ampacity.ohmsPerBlock(insulation.ampacityFactorPercent());
+        return ampacity.ohmsPerBlock();
     }
 
     /** How far this cable sags, relative to copper (1.0). */
@@ -121,8 +126,7 @@ public record CableConnection(CableAmpacity ampacity, CableInsulation insulation
 
     /** True when two cables are the same product on the same two endpoints. */
     public boolean sameRun(CableConnection other) {
-        return ampacity == other.ampacity && insulation == other.insulation
-                && a.equals(other.a) && b.equals(other.b);
+        return runKey().equals(other.runKey());
     }
 
     /**

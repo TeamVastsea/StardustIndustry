@@ -58,19 +58,36 @@ public class MachinePortBlockEntity extends BlockEntity {
         if (controllerPos == null || level == null) {
             return null;
         }
-        return level.getBlockEntity(controllerPos) instanceof MachineBlockEntity machine ? machine : null;
+        return level.getBlockEntity(controllerPos) instanceof MachineBlockEntity machine && !machine.isRemoved()
+                ? machine : null;
     }
 
     /** Called by the controller when the structure forms. */
     public void bind(BlockPos controllerPos) {
-        this.controllerPos = controllerPos.immutable();
+        BlockPos newController = controllerPos.immutable();
+        if (newController.equals(this.controllerPos)) {
+            return;
+        }
+        this.controllerPos = newController;
+        invalidatePortCapabilities();
         setChanged();
     }
 
     /** Called by the controller when the structure breaks, or before re-binding. */
     public void unbind() {
+        if (controllerPos == null) {
+            return;
+        }
         this.controllerPos = null;
+        invalidatePortCapabilities();
         setChanged();
+    }
+
+    /** Refreshes capability consumers after binding or port configuration changes. */
+    protected final void invalidatePortCapabilities() {
+        if (level != null) {
+            level.invalidateCapabilities(worldPosition);
+        }
     }
 
     public boolean isBound() {
@@ -88,7 +105,29 @@ public class MachinePortBlockEntity extends BlockEntity {
     @Override
     protected void loadAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.loadAdditional(tag, registries);
-        controllerPos = tag.contains("Controller") ? BlockPos.of(tag.getLong("Controller")) : null;
+        BlockPos loadedController = tag.contains("Controller") ? BlockPos.of(tag.getLong("Controller")) : null;
+        if (!java.util.Objects.equals(controllerPos, loadedController)) {
+            controllerPos = loadedController;
+            invalidatePortCapabilities();
+        }
+    }
+
+    @Override
+    public void onLoad() {
+        super.onLoad();
+        invalidatePortCapabilities();
+        MachineBlockEntity machine = controller();
+        if (machine != null && level != null && !level.isClientSide()) {
+            if (!machine.rememberBoundPort(worldPosition)) {
+                unbind();
+            }
+        }
+    }
+
+    @Override
+    public void setRemoved() {
+        invalidatePortCapabilities();
+        super.setRemoved();
     }
 
     @Override

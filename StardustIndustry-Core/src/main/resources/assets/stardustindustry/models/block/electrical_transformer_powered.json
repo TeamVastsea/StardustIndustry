@@ -1,0 +1,6 @@
+{
+  "parent": "stardustindustry:block/electrical_transformer",
+  "textures": {
+    "front": "minecraft:block/redstone_lamp_on"
+  }
+}

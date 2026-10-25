@@ -1,0 +1,10 @@
+{
+  "parent": "stardustindustry:block/electrical_orientable",
+  "textures": {
+    "bottom": "stardustindustry:block/electrical_chassis_bottom",
+    "top": "stardustindustry:block/transformer_hv_ehv_top",
+    "front": "stardustindustry:block/transformer_hv_ehv_front",
+    "back": "stardustindustry:block/transformer_hv_ehv_back",
+    "side": "stardustindustry:block/transformer_hv_ehv_side"
+  }
+}

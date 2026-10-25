@@ -38,14 +38,14 @@ import net.minecraft.world.level.Level;
  * @param results      the deterministic outputs
  * @param byproducts   outputs rolled independently, each with a chance in [0,1]
  * @param processingTime ticks the recipe takes at 1x speed
- * @param energyCost   FE consumed per tick while running
+ * @param powerWatts   continuous electrical demand while running
  */
 public record ProcessingRecipe(
         Ingredient ingredient,
         List<ItemStack> results,
         List<Byproduct> byproducts,
         int processingTime,
-        int energyCost) implements Recipe<ProcessingRecipeInput> {
+        int powerWatts) implements Recipe<ProcessingRecipeInput> {
 
     /** A probabilistic extra output. */
     public record Byproduct(ItemStack stack, float chance) {
@@ -104,8 +104,20 @@ public record ProcessingRecipe(
             RESULTS_CODEC.forGetter(ProcessingRecipe::results),
             Byproduct.CODEC.listOf().optionalFieldOf("byproducts", List.of()).forGetter(ProcessingRecipe::byproducts),
             Codec.INT.optionalFieldOf("processing_time", 200).forGetter(ProcessingRecipe::processingTime),
-            Codec.INT.optionalFieldOf("energy_cost", 20).forGetter(ProcessingRecipe::energyCost)
-    ).apply(instance, ProcessingRecipe::new));
+            Codec.INT.optionalFieldOf("power_watts", -1).forGetter(ProcessingRecipe::powerWatts),
+            Codec.INT.optionalFieldOf("energy_cost", -1).forGetter(recipe -> -1)
+    ).apply(instance, (ingredient, results, byproducts, processingTime, powerWatts, legacyEnergyCost) -> {
+        if (powerWatts >= 0) {
+            return new ProcessingRecipe(ingredient, results, byproducts, processingTime, powerWatts);
+        }
+        if (legacyEnergyCost >= 0) {
+            com.stardustindustry.stardustindustry.StardustIndustry.LOGGER.warn(
+                    "Recipe field 'energy_cost' is deprecated; use 'power_watts' (legacy value {} became {} W)",
+                    legacyEnergyCost, legacyEnergyCost * 20);
+            return new ProcessingRecipe(ingredient, results, byproducts, processingTime, legacyEnergyCost * 20);
+        }
+        return new ProcessingRecipe(ingredient, results, byproducts, processingTime, 400);
+    }));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, ProcessingRecipe> STREAM_CODEC =
             StreamCodec.composite(
@@ -113,7 +125,7 @@ public record ProcessingRecipe(
                     ItemStack.STREAM_CODEC.apply(ByteBufCodecs.list()), ProcessingRecipe::results,
                     Byproduct.STREAM_CODEC.apply(ByteBufCodecs.list()), ProcessingRecipe::byproducts,
                     ByteBufCodecs.VAR_INT, ProcessingRecipe::processingTime,
-                    ByteBufCodecs.VAR_INT, ProcessingRecipe::energyCost,
+                    ByteBufCodecs.VAR_INT, ProcessingRecipe::powerWatts,
                     ProcessingRecipe::new);
 
     /** Serializer used by the {@code stardustindustry:crushing} type. */
@@ -176,6 +188,11 @@ public record ProcessingRecipe(
         NonNullList<Ingredient> list = NonNullList.create();
         list.add(ingredient);
         return list;
+    }
+
+    @Override
+    public boolean isSpecial() {
+        return true;
     }
 
     @Override

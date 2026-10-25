@@ -51,7 +51,19 @@ public final class ModBlockEntities {
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<EnergyPortBlockEntity>> ENERGY_PORT =
             BLOCK_ENTITIES.register("energy_port",
                     () -> BlockEntityType.Builder.of(EnergyPortBlockEntity::new,
-                            ModBlocks.LV_ENERGY_PORT.get()).build(null));
+                            ModBlocks.LV_ENERGY_PORT.get(),
+                            ModBlocks.MV_ENERGY_PORT.get(),
+                            ModBlocks.HV_ENERGY_PORT.get(),
+                            ModBlocks.EHV_ENERGY_PORT.get()).build(null));
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<com.stardustindustry.stardustindustry.machine.storage.StorageStationBlockEntity>> STORAGE_STATION_CONTROLLER =
+            BLOCK_ENTITIES.register("storage_station_controller",
+                    () -> BlockEntityType.Builder.of(
+                            com.stardustindustry.stardustindustry.machine.storage.StorageStationBlockEntity::new,
+                            ModBlocks.LV_STORAGE_STATION_CONTROLLER.get(),
+                            ModBlocks.MV_STORAGE_STATION_CONTROLLER.get(),
+                            ModBlocks.HV_STORAGE_STATION_CONTROLLER.get(),
+                            ModBlocks.EHV_STORAGE_STATION_CONTROLLER.get()).build(null));
 
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<com.stardustindustry.stardustindustry.machine.InvisibleStructureBlockEntity>> INVISIBLE_STRUCTURE =
             BLOCK_ENTITIES.register("invisible_structure",
@@ -76,6 +88,17 @@ public final class ModBlockEntities {
                             ModBlocks.HV_TERMINAL_MOUNT.get(),
                             ModBlocks.EHV_TERMINAL_MOUNT.get()).build(null));
 
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceBlockEntity>> ELECTRICAL_DEVICE =
+            BLOCK_ENTITIES.register("electrical_device",
+                    () -> BlockEntityType.Builder.of(
+                            com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceBlockEntity::new,
+                            ModBlocks.FUEL_GENERATOR.get(), ModBlocks.CREATIVE_POWER_SOURCE.get(),
+                            ModBlocks.TRANSFORMER_LV_MV.get(), ModBlocks.TRANSFORMER_MV_HV.get(), ModBlocks.TRANSFORMER_HV_EHV.get(),
+                            ModBlocks.LV_BREAKER.get(), ModBlocks.MV_BREAKER.get(), ModBlocks.HV_BREAKER.get(), ModBlocks.EHV_BREAKER.get(),
+                            ModBlocks.LV_FUSE_BOX.get(), ModBlocks.MV_FUSE_BOX.get(), ModBlocks.HV_FUSE_BOX.get(), ModBlocks.EHV_FUSE_BOX.get(),
+                            ModBlocks.LV_FE_CONVERTER.get(), ModBlocks.MV_FE_CONVERTER.get(), ModBlocks.HV_FE_CONVERTER.get(), ModBlocks.EHV_FE_CONVERTER.get())
+                            .build(null));
+
     private ModBlockEntities() {}
 
     public static void register(IEventBus eventBus) {
@@ -98,6 +121,9 @@ public final class ModBlockEntities {
         ModBlocks.LV_FLUID_PORT.get().withBlockEntityType(FLUID_PORT.get());
         ModBlocks.LV_GAS_PORT.get().withBlockEntityType(GAS_PORT.get());
         ModBlocks.LV_ENERGY_PORT.get().withBlockEntityType(ENERGY_PORT.get());
+        ModBlocks.MV_ENERGY_PORT.get().withBlockEntityType(ENERGY_PORT.get());
+        ModBlocks.HV_ENERGY_PORT.get().withBlockEntityType(ENERGY_PORT.get());
+        ModBlocks.EHV_ENERGY_PORT.get().withBlockEntityType(ENERGY_PORT.get());
         ModBlocks.INVISIBLE_STRUCTURE.get().withBlockEntityType(INVISIBLE_STRUCTURE.get());
     }
 }

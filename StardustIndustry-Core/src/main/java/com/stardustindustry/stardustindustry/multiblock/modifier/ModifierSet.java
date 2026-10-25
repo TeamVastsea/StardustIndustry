@@ -17,7 +17,7 @@ package com.stardustindustry.stardustindustry.multiblock.modifier;
  * those deltas onto the base of {@code 1.0f}.</p>
  *
  * @param speedMultiplier  progress-rate multiplier, {@code >= 0}
- * @param energyMultiplier FE-per-tick cost multiplier, {@code >= 0}
+ * @param energyMultiplier electrical power multiplier, {@code >= 0}
  * @param parallelBonus    extra recipe slots on top of the machine's own
  * @param bufferMultiplier multiplier applied to internal buffer capacities
  */
@@ -65,9 +65,9 @@ public record ModifierSet(
         return Math.max(1, Math.round(baseTicks / speedMultiplier));
     }
 
-    /** Applies this set's energy multiplier to a base energy cost, in FE. */
-    public int effectiveEnergyCost(int baseCost) {
-        return Math.max(1, Math.round(baseCost * energyMultiplier));
+    /** Applies this set's energy multiplier to rated power, in watts. */
+    public long effectivePowerWatts(long basePowerWatts) {
+        return Math.max(1L, Math.round(basePowerWatts * (double) energyMultiplier));
     }
 
     /** Applies this set's buffer multiplier to a base capacity. */

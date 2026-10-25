@@ -7,3 +7,6 @@ src/generated/**/*.json text eol=lf
 # Shell scripts must keep LF: they run on the Linux CI runner, where a CRLF
 # shebang line is an "bad interpreter" error.
 *.sh text eol=lf
+
+# Design documents are maintained with CRLF; do not treat the CR as trailing whitespace.
+docs/*.md whitespace=cr-at-eol

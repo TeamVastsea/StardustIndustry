@@ -30,17 +30,19 @@ import net.minecraft.world.level.Level;
 public final class RecipeRunnerModule implements MachineModule {
 
     private final ItemInventoryModule inventory;
-    private final EnergyBufferModule energy;
+    private final JouleStorageModule energy;
     private final Random random = new Random();
     private MachineBlockEntity machine;
 
     private ProcessingRecipe activeRecipe;
     private int progress;
     private int totalTime;
-    /** Energy charged each working tick, already multiplied by the filler set. */
-    private int energyPerTick;
+    /** Continuous demand while working, already multiplied by the filler set. */
+    private long powerWatts;
+    /** Watt-tick remainder retained so non-multiples of 20 never lose energy. */
+    private long energyRemainder;
 
-    public RecipeRunnerModule(ItemInventoryModule inventory, EnergyBufferModule energy) {
+    public RecipeRunnerModule(ItemInventoryModule inventory, JouleStorageModule energy) {
         this.inventory = inventory;
         this.energy = energy;
     }
@@ -63,6 +65,11 @@ public final class RecipeRunnerModule implements MachineModule {
         return activeRecipe;
     }
 
+    /** Current process demand before the machine's separate standby draw. */
+    public long powerWatts() {
+        return powerWatts;
+    }
+
     @Override
     public void onStructureChanged(boolean formed) {
         // A filler change arrives as a re-evaluation; the in-flight recipe was
@@ -71,7 +78,8 @@ public final class RecipeRunnerModule implements MachineModule {
         activeRecipe = null;
         progress = 0;
         totalTime = 0;
-        energyPerTick = 0;
+        powerWatts = 0L;
+        energyRemainder = 0L;
     }
 
     @Override
@@ -115,12 +123,14 @@ public final class RecipeRunnerModule implements MachineModule {
         // fillers leaves both at the recipe's own values.
         com.stardustindustry.stardustindustry.multiblock.modifier.ModifierSet modifiers = machine.modifiers();
         int time = modifiers.effectiveProcessingTime(recipe.processingTime());
-        int costPerTick = modifiers.effectiveEnergyCost(recipe.energyCost());
+        long recipePowerWatts = modifiers.effectivePowerWatts(recipe.powerWatts());
+        com.stardustindustry.stardustindustry.energy.ElectricalUnits.TickEnergy firstTick =
+                com.stardustindustry.stardustindustry.energy.ElectricalUnits.tickEnergy(recipePowerWatts, 0L);
 
         // The recipe must be affordable for at least one tick of work and its
         // outputs must fit before any input is consumed, otherwise a full output
         // would silently eat the input.
-        if (!energy.hasEnergy(costPerTick)) {
+        if (!energy.hasJoules(firstTick.joules())) {
             return;
         }
         if (!outputsFit(recipe)) {
@@ -129,15 +139,19 @@ public final class RecipeRunnerModule implements MachineModule {
 
         activeRecipe = recipe;
         totalTime = Math.max(1, time);
-        energyPerTick = costPerTick;
+        powerWatts = recipePowerWatts;
+        energyRemainder = 0L;
         progress = 0;
     }
 
     private void advance() {
-        if (!energy.hasEnergy(energyPerTick)) {
+        com.stardustindustry.stardustindustry.energy.ElectricalUnits.TickEnergy tickEnergy =
+                com.stardustindustry.stardustindustry.energy.ElectricalUnits.tickEnergy(powerWatts, energyRemainder);
+        if (!energy.hasJoules(tickEnergy.joules())) {
             return;
         }
-        energy.extract(energyPerTick, false);
+        energy.extractJoules(tickEnergy.joules(), false);
+        energyRemainder = tickEnergy.remainderWattTicks();
         progress++;
 
         if (progress >= totalTime) {
@@ -145,7 +159,8 @@ public final class RecipeRunnerModule implements MachineModule {
             activeRecipe = null;
             progress = 0;
             totalTime = 0;
-            energyPerTick = 0;
+            powerWatts = 0L;
+            energyRemainder = 0L;
         }
         machine.setChanged();
     }

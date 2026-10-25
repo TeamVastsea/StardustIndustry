@@ -34,8 +34,8 @@ import net.minecraft.network.codec.StreamCodec;
  * @param energy        the energy multiplier, {@code 1.0} baseline
  * @param parallel      the parallel bonus over the machine's own slots
  * @param buffer        the buffer multiplier, {@code 1.0} baseline
- * @param energyStored  current FE in the buffer, or {@code -1} when there is none
- * @param energyMax     buffer capacity in FE, or {@code -1} when there is none
+ * @param energyStored  current joules in the buffer, or {@code -1} when there is none
+ * @param energyMax     buffer capacity in joules, or {@code -1} when there is none
  * @param fillerCount   total number of filler blocks counted
  * @param fluidName     the translation key of the held fluid, or {@code ""} when empty/none
  * @param fluidAmount   mB currently held, or {@code -1} when the machine has no tank
@@ -53,8 +53,8 @@ public record MachineParamsData(
         float energy,
         int parallel,
         float buffer,
-        int energyStored,
-        int energyMax,
+        long energyStored,
+        long energyMax,
         int fillerCount,
         String fluidName,
         int fluidAmount,
@@ -144,8 +144,8 @@ public record MachineParamsData(
                         buffer.writeFloat(data.energy());
                         ByteBufCodecs.VAR_INT.encode(buffer, data.parallel());
                         buffer.writeFloat(data.buffer());
-                        ByteBufCodecs.VAR_INT.encode(buffer, data.energyStored());
-                        ByteBufCodecs.VAR_INT.encode(buffer, data.energyMax());
+                        ByteBufCodecs.VAR_LONG.encode(buffer, data.energyStored());
+                        ByteBufCodecs.VAR_LONG.encode(buffer, data.energyMax());
                         ByteBufCodecs.VAR_INT.encode(buffer, data.fillerCount());
                         ByteBufCodecs.STRING_UTF8.encode(buffer, data.fluidName());
                         ByteBufCodecs.VAR_INT.encode(buffer, data.fluidAmount());
@@ -166,8 +166,8 @@ public record MachineParamsData(
                         float energy = buffer.readFloat();
                         int parallel = ByteBufCodecs.VAR_INT.decode(buffer);
                         float bufferMultiplier = buffer.readFloat();
-                        int energyStored = ByteBufCodecs.VAR_INT.decode(buffer);
-                        int energyMax = ByteBufCodecs.VAR_INT.decode(buffer);
+                        long energyStored = ByteBufCodecs.VAR_LONG.decode(buffer);
+                        long energyMax = ByteBufCodecs.VAR_LONG.decode(buffer);
                         int fillerCount = ByteBufCodecs.VAR_INT.decode(buffer);
                         String fluidName = ByteBufCodecs.STRING_UTF8.decode(buffer);
                         int fluidAmount = ByteBufCodecs.VAR_INT.decode(buffer);

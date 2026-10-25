@@ -94,6 +94,14 @@ public final class ModBlocks {
             () -> new MachinePortBlock(portProperties(), PartRole.PORT_ENERGY,
                     com.stardustindustry.stardustindustry.energy.EnergyTier.LV));
 
+    /** Higher-voltage energy ports are shared by storage stations and future machines. */
+    public static final DeferredBlock<MachinePortBlock> MV_ENERGY_PORT = energyPort(
+            "mv_energy_port", com.stardustindustry.stardustindustry.energy.EnergyTier.MV);
+    public static final DeferredBlock<MachinePortBlock> HV_ENERGY_PORT = energyPort(
+            "hv_energy_port", com.stardustindustry.stardustindustry.energy.EnergyTier.HV);
+    public static final DeferredBlock<MachinePortBlock> EHV_ENERGY_PORT = energyPort(
+            "ehv_energy_port", com.stardustindustry.stardustindustry.energy.EnergyTier.EHV);
+
     /** LV grinding core: speed at a steeper energy cost. */
     public static final DeferredBlock<com.stardustindustry.stardustindustry.machine.FillerBlock> LV_GRINDING_CORE =
             ModRegistries.BLOCKS.register("lv_grinding_core",
@@ -186,6 +194,77 @@ public final class ModBlocks {
                                     .isSuffocating((state, level, pos) -> false)
                                     .isViewBlocking((state, level, pos) -> false)));
 
+    // ---- storage station ----
+
+    /** Tierless shell parts shared by all four station voltage levels. */
+    public static final DeferredBlock<Block> STORAGE_STATION_FRAME =
+            ModRegistries.BLOCKS.register("storage_station_frame", () -> new Block(frameProperties()));
+    public static final DeferredBlock<Block> STORAGE_STATION_CASING =
+            ModRegistries.BLOCKS.register("storage_station_casing", () -> new Block(baseProperties()));
+
+    /** One face-mounted controller and one internal cell variant per voltage tier. */
+    public static final DeferredBlock<com.stardustindustry.stardustindustry.machine.storage.StorageStationControllerBlock>
+            LV_STORAGE_STATION_CONTROLLER = storageController("lv_storage_station_controller",
+                    com.stardustindustry.stardustindustry.machine.storage.StorageTier.LV);
+    public static final DeferredBlock<com.stardustindustry.stardustindustry.machine.storage.StorageStationControllerBlock>
+            MV_STORAGE_STATION_CONTROLLER = storageController("mv_storage_station_controller",
+                    com.stardustindustry.stardustindustry.machine.storage.StorageTier.MV);
+    public static final DeferredBlock<com.stardustindustry.stardustindustry.machine.storage.StorageStationControllerBlock>
+            HV_STORAGE_STATION_CONTROLLER = storageController("hv_storage_station_controller",
+                    com.stardustindustry.stardustindustry.machine.storage.StorageTier.HV);
+    public static final DeferredBlock<com.stardustindustry.stardustindustry.machine.storage.StorageStationControllerBlock>
+            EHV_STORAGE_STATION_CONTROLLER = storageController("ehv_storage_station_controller",
+                    com.stardustindustry.stardustindustry.machine.storage.StorageTier.EHV);
+
+    public static final DeferredBlock<com.stardustindustry.stardustindustry.machine.storage.StorageCellBlock>
+            LV_STORAGE_CELL = storageCell("lv_storage_cell",
+                    com.stardustindustry.stardustindustry.machine.storage.StorageTier.LV);
+    public static final DeferredBlock<com.stardustindustry.stardustindustry.machine.storage.StorageCellBlock>
+            MV_STORAGE_CELL = storageCell("mv_storage_cell",
+                    com.stardustindustry.stardustindustry.machine.storage.StorageTier.MV);
+    public static final DeferredBlock<com.stardustindustry.stardustindustry.machine.storage.StorageCellBlock>
+            HV_STORAGE_CELL = storageCell("hv_storage_cell",
+                    com.stardustindustry.stardustindustry.machine.storage.StorageTier.HV);
+    public static final DeferredBlock<com.stardustindustry.stardustindustry.machine.storage.StorageCellBlock>
+            EHV_STORAGE_CELL = storageCell("ehv_storage_cell",
+                    com.stardustindustry.stardustindustry.machine.storage.StorageTier.EHV);
+
+    // ---- native electrical equipment ----
+    public static final DeferredBlock<com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceBlock>
+            FUEL_GENERATOR = electricalDevice("fuel_generator", com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceKind.FUEL_GENERATOR);
+    public static final DeferredBlock<com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceBlock>
+            CREATIVE_POWER_SOURCE = electricalDevice("creative_power_source", com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceKind.CREATIVE_SOURCE);
+    public static final DeferredBlock<com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceBlock>
+            TRANSFORMER_LV_MV = electricalDevice("transformer_lv_mv", com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceKind.TRANSFORMER_LV_MV);
+    public static final DeferredBlock<com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceBlock>
+            TRANSFORMER_MV_HV = electricalDevice("transformer_mv_hv", com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceKind.TRANSFORMER_MV_HV);
+    public static final DeferredBlock<com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceBlock>
+            TRANSFORMER_HV_EHV = electricalDevice("transformer_hv_ehv", com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceKind.TRANSFORMER_HV_EHV);
+    public static final DeferredBlock<com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceBlock>
+            LV_BREAKER = electricalDevice("lv_breaker", com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceKind.LV_BREAKER);
+    public static final DeferredBlock<com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceBlock>
+            MV_BREAKER = electricalDevice("mv_breaker", com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceKind.MV_BREAKER);
+    public static final DeferredBlock<com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceBlock>
+            HV_BREAKER = electricalDevice("hv_breaker", com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceKind.HV_BREAKER);
+    public static final DeferredBlock<com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceBlock>
+            EHV_BREAKER = electricalDevice("ehv_breaker", com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceKind.EHV_BREAKER);
+    public static final DeferredBlock<com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceBlock>
+            LV_FUSE_BOX = electricalDevice("lv_fuse_box", com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceKind.LV_FUSE_BOX);
+    public static final DeferredBlock<com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceBlock>
+            MV_FUSE_BOX = electricalDevice("mv_fuse_box", com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceKind.MV_FUSE_BOX);
+    public static final DeferredBlock<com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceBlock>
+            HV_FUSE_BOX = electricalDevice("hv_fuse_box", com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceKind.HV_FUSE_BOX);
+    public static final DeferredBlock<com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceBlock>
+            EHV_FUSE_BOX = electricalDevice("ehv_fuse_box", com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceKind.EHV_FUSE_BOX);
+    public static final DeferredBlock<com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceBlock>
+            LV_FE_CONVERTER = electricalDevice("lv_fe_converter", com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceKind.LV_FE_CONVERTER);
+    public static final DeferredBlock<com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceBlock>
+            MV_FE_CONVERTER = electricalDevice("mv_fe_converter", com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceKind.MV_FE_CONVERTER);
+    public static final DeferredBlock<com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceBlock>
+            HV_FE_CONVERTER = electricalDevice("hv_fe_converter", com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceKind.HV_FE_CONVERTER);
+    public static final DeferredBlock<com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceBlock>
+            EHV_FE_CONVERTER = electricalDevice("ehv_fe_converter", com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceKind.EHV_FE_CONVERTER);
+
     /** Block item for the crusher. */
     public static final DeferredItem<BlockItem> CRUSHER_ITEM =
             ModRegistries.ITEMS.registerSimpleBlockItem("crusher", CRUSHER);
@@ -211,6 +290,12 @@ public final class ModBlocks {
     /** Block item for the LV energy port. */
     public static final DeferredItem<BlockItem> LV_ENERGY_PORT_ITEM =
             ModRegistries.ITEMS.registerSimpleBlockItem("lv_energy_port", LV_ENERGY_PORT);
+    public static final DeferredItem<BlockItem> MV_ENERGY_PORT_ITEM =
+            ModRegistries.ITEMS.registerSimpleBlockItem("mv_energy_port", MV_ENERGY_PORT);
+    public static final DeferredItem<BlockItem> HV_ENERGY_PORT_ITEM =
+            ModRegistries.ITEMS.registerSimpleBlockItem("hv_energy_port", HV_ENERGY_PORT);
+    public static final DeferredItem<BlockItem> EHV_ENERGY_PORT_ITEM =
+            ModRegistries.ITEMS.registerSimpleBlockItem("ehv_energy_port", EHV_ENERGY_PORT);
     /** Block item for the LV grinding core. */
     public static final DeferredItem<BlockItem> LV_GRINDING_CORE_ITEM =
             ModRegistries.ITEMS.registerSimpleBlockItem("lv_grinding_core", LV_GRINDING_CORE);
@@ -236,6 +321,55 @@ public final class ModBlocks {
     public static final DeferredItem<BlockItem> INDUSTRIAL_GLASS_ITEM =
             ModRegistries.ITEMS.registerSimpleBlockItem("industrial_glass", INDUSTRIAL_GLASS);
 
+    public static final DeferredItem<BlockItem> STORAGE_STATION_FRAME_ITEM =
+            ModRegistries.ITEMS.registerSimpleBlockItem("storage_station_frame", STORAGE_STATION_FRAME);
+    public static final DeferredItem<BlockItem> STORAGE_STATION_CASING_ITEM =
+            ModRegistries.ITEMS.registerSimpleBlockItem("storage_station_casing", STORAGE_STATION_CASING);
+
+    public static final DeferredItem<com.stardustindustry.stardustindustry.machine.storage.StorageStationBlockItem>
+            LV_STORAGE_STATION_CONTROLLER_ITEM = storageItem("lv_storage_station_controller",
+                    LV_STORAGE_STATION_CONTROLLER, com.stardustindustry.stardustindustry.machine.storage.StorageTier.LV);
+    public static final DeferredItem<com.stardustindustry.stardustindustry.machine.storage.StorageStationBlockItem>
+            MV_STORAGE_STATION_CONTROLLER_ITEM = storageItem("mv_storage_station_controller",
+                    MV_STORAGE_STATION_CONTROLLER, com.stardustindustry.stardustindustry.machine.storage.StorageTier.MV);
+    public static final DeferredItem<com.stardustindustry.stardustindustry.machine.storage.StorageStationBlockItem>
+            HV_STORAGE_STATION_CONTROLLER_ITEM = storageItem("hv_storage_station_controller",
+                    HV_STORAGE_STATION_CONTROLLER, com.stardustindustry.stardustindustry.machine.storage.StorageTier.HV);
+    public static final DeferredItem<com.stardustindustry.stardustindustry.machine.storage.StorageStationBlockItem>
+            EHV_STORAGE_STATION_CONTROLLER_ITEM = storageItem("ehv_storage_station_controller",
+                    EHV_STORAGE_STATION_CONTROLLER, com.stardustindustry.stardustindustry.machine.storage.StorageTier.EHV);
+
+    public static final DeferredItem<com.stardustindustry.stardustindustry.machine.storage.StorageStationBlockItem>
+            LV_STORAGE_CELL_ITEM = storageItem("lv_storage_cell", LV_STORAGE_CELL,
+                    com.stardustindustry.stardustindustry.machine.storage.StorageTier.LV);
+    public static final DeferredItem<com.stardustindustry.stardustindustry.machine.storage.StorageStationBlockItem>
+            MV_STORAGE_CELL_ITEM = storageItem("mv_storage_cell", MV_STORAGE_CELL,
+                    com.stardustindustry.stardustindustry.machine.storage.StorageTier.MV);
+    public static final DeferredItem<com.stardustindustry.stardustindustry.machine.storage.StorageStationBlockItem>
+            HV_STORAGE_CELL_ITEM = storageItem("hv_storage_cell", HV_STORAGE_CELL,
+                    com.stardustindustry.stardustindustry.machine.storage.StorageTier.HV);
+    public static final DeferredItem<com.stardustindustry.stardustindustry.machine.storage.StorageStationBlockItem>
+            EHV_STORAGE_CELL_ITEM = storageItem("ehv_storage_cell", EHV_STORAGE_CELL,
+                    com.stardustindustry.stardustindustry.machine.storage.StorageTier.EHV);
+
+    public static final DeferredItem<BlockItem> FUEL_GENERATOR_ITEM = ModRegistries.ITEMS.registerSimpleBlockItem("fuel_generator", FUEL_GENERATOR);
+    public static final DeferredItem<BlockItem> CREATIVE_POWER_SOURCE_ITEM = ModRegistries.ITEMS.registerSimpleBlockItem("creative_power_source", CREATIVE_POWER_SOURCE);
+    public static final DeferredItem<BlockItem> TRANSFORMER_LV_MV_ITEM = ModRegistries.ITEMS.registerSimpleBlockItem("transformer_lv_mv", TRANSFORMER_LV_MV);
+    public static final DeferredItem<BlockItem> TRANSFORMER_MV_HV_ITEM = ModRegistries.ITEMS.registerSimpleBlockItem("transformer_mv_hv", TRANSFORMER_MV_HV);
+    public static final DeferredItem<BlockItem> TRANSFORMER_HV_EHV_ITEM = ModRegistries.ITEMS.registerSimpleBlockItem("transformer_hv_ehv", TRANSFORMER_HV_EHV);
+    public static final DeferredItem<BlockItem> LV_BREAKER_ITEM = ModRegistries.ITEMS.registerSimpleBlockItem("lv_breaker", LV_BREAKER);
+    public static final DeferredItem<BlockItem> MV_BREAKER_ITEM = ModRegistries.ITEMS.registerSimpleBlockItem("mv_breaker", MV_BREAKER);
+    public static final DeferredItem<BlockItem> HV_BREAKER_ITEM = ModRegistries.ITEMS.registerSimpleBlockItem("hv_breaker", HV_BREAKER);
+    public static final DeferredItem<BlockItem> EHV_BREAKER_ITEM = ModRegistries.ITEMS.registerSimpleBlockItem("ehv_breaker", EHV_BREAKER);
+    public static final DeferredItem<BlockItem> LV_FUSE_BOX_ITEM = ModRegistries.ITEMS.registerSimpleBlockItem("lv_fuse_box", LV_FUSE_BOX);
+    public static final DeferredItem<BlockItem> MV_FUSE_BOX_ITEM = ModRegistries.ITEMS.registerSimpleBlockItem("mv_fuse_box", MV_FUSE_BOX);
+    public static final DeferredItem<BlockItem> HV_FUSE_BOX_ITEM = ModRegistries.ITEMS.registerSimpleBlockItem("hv_fuse_box", HV_FUSE_BOX);
+    public static final DeferredItem<BlockItem> EHV_FUSE_BOX_ITEM = ModRegistries.ITEMS.registerSimpleBlockItem("ehv_fuse_box", EHV_FUSE_BOX);
+    public static final DeferredItem<BlockItem> LV_FE_CONVERTER_ITEM = ModRegistries.ITEMS.registerSimpleBlockItem("lv_fe_converter", LV_FE_CONVERTER);
+    public static final DeferredItem<BlockItem> MV_FE_CONVERTER_ITEM = ModRegistries.ITEMS.registerSimpleBlockItem("mv_fe_converter", MV_FE_CONVERTER);
+    public static final DeferredItem<BlockItem> HV_FE_CONVERTER_ITEM = ModRegistries.ITEMS.registerSimpleBlockItem("hv_fe_converter", HV_FE_CONVERTER);
+    public static final DeferredItem<BlockItem> EHV_FE_CONVERTER_ITEM = ModRegistries.ITEMS.registerSimpleBlockItem("ehv_fe_converter", EHV_FE_CONVERTER);
+
     /**
      * The terminal mounts, one per tier. Each is a distinct block because the
      * grid density is a property of the voltage level.
@@ -257,6 +391,43 @@ public final class ModBlocks {
         return ModRegistries.BLOCKS.register(name,
                 () -> new com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlock(
                         terminalProperties(), tier));
+    }
+
+    private static DeferredBlock<MachinePortBlock> energyPort(
+            String name, com.stardustindustry.stardustindustry.energy.EnergyTier tier) {
+        return ModRegistries.BLOCKS.register(name,
+                () -> new MachinePortBlock(portProperties(), PartRole.PORT_ENERGY, tier));
+    }
+
+    private static DeferredBlock<com.stardustindustry.stardustindustry.machine.storage.StorageStationControllerBlock>
+            storageController(String name, com.stardustindustry.stardustindustry.machine.storage.StorageTier tier) {
+        return ModRegistries.BLOCKS.register(name,
+                () -> new com.stardustindustry.stardustindustry.machine.storage.StorageStationControllerBlock(
+                        baseProperties(), tier));
+    }
+
+    private static DeferredBlock<com.stardustindustry.stardustindustry.machine.storage.StorageCellBlock>
+            storageCell(String name, com.stardustindustry.stardustindustry.machine.storage.StorageTier tier) {
+        return ModRegistries.BLOCKS.register(name,
+                () -> new com.stardustindustry.stardustindustry.machine.storage.StorageCellBlock(
+                        fillerProperties(), tier));
+    }
+
+    private static DeferredItem<com.stardustindustry.stardustindustry.machine.storage.StorageStationBlockItem>
+            storageItem(String name, DeferredBlock<? extends Block> block,
+                        com.stardustindustry.stardustindustry.machine.storage.StorageTier tier) {
+        return ModRegistries.ITEMS.register(name,
+                () -> new com.stardustindustry.stardustindustry.machine.storage.StorageStationBlockItem(
+                        block.get(), new net.minecraft.world.item.Item.Properties(), tier));
+    }
+
+    private static DeferredBlock<com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceBlock>
+            electricalDevice(String name,
+                    com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceKind kind) {
+        return ModRegistries.BLOCKS.register(name,
+                () -> new com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceBlock(
+                        BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(3.0f, 6.0f)
+                                .sound(SoundType.METAL).requiresCorrectToolForDrops(), kind));
     }
 
     /** Terminal racks are light fittings: a stone pickaxe is enough to recover one. */
@@ -323,6 +494,9 @@ public final class ModBlocks {
         MachinePartTypes.register(LV_FLUID_PORT.get(), MachinePartTypes.PartType.PORT);
         MachinePartTypes.register(LV_GAS_PORT.get(), MachinePartTypes.PartType.PORT);
         MachinePartTypes.register(LV_ENERGY_PORT.get(), MachinePartTypes.PartType.PORT);
+        MachinePartTypes.register(MV_ENERGY_PORT.get(), MachinePartTypes.PartType.PORT);
+        MachinePartTypes.register(HV_ENERGY_PORT.get(), MachinePartTypes.PartType.PORT);
+        MachinePartTypes.register(EHV_ENERGY_PORT.get(), MachinePartTypes.PartType.PORT);
         MachinePartTypes.register(LV_BASE.get(), MachinePartTypes.PartType.BASE);
         MachinePartTypes.registerFiller(LV_GRINDING_CORE.get(),
                 com.stardustindustry.stardustindustry.multiblock.provider.FillerKind.GRINDING_CORE);
@@ -341,6 +515,8 @@ public final class ModBlocks {
         MachinePartTypes.register(FLUID_TANK_SHELL.get(), MachinePartTypes.PartType.SHELL);
         MachinePartTypes.register(GAS_TANK_SHELL.get(), MachinePartTypes.PartType.SHELL);
         MachinePartTypes.register(INDUSTRIAL_GLASS.get(), MachinePartTypes.PartType.SHELL);
+        MachinePartTypes.register(STORAGE_STATION_FRAME.get(), MachinePartTypes.PartType.FRAME);
+        MachinePartTypes.register(STORAGE_STATION_CASING.get(), MachinePartTypes.PartType.SHELL);
 
         // Level-bearing blocks: base blocks and every tiered port. The tank's own
         // parts are deliberately absent, since a tank has no tier.
@@ -349,6 +525,9 @@ public final class ModBlocks {
         TierMaterials.register(LV_FLUID_PORT.get(), com.stardustindustry.stardustindustry.energy.EnergyTier.LV);
         TierMaterials.register(LV_GAS_PORT.get(), com.stardustindustry.stardustindustry.energy.EnergyTier.LV);
         TierMaterials.register(LV_ENERGY_PORT.get(), com.stardustindustry.stardustindustry.energy.EnergyTier.LV);
+        TierMaterials.register(MV_ENERGY_PORT.get(), com.stardustindustry.stardustindustry.energy.EnergyTier.MV);
+        TierMaterials.register(HV_ENERGY_PORT.get(), com.stardustindustry.stardustindustry.energy.EnergyTier.HV);
+        TierMaterials.register(EHV_ENERGY_PORT.get(), com.stardustindustry.stardustindustry.energy.EnergyTier.EHV);
 
         // Terminal mounts: not machine parts (they never form a multiblock), so
         // they are deliberately absent from MachinePartTypes. Their tier is read

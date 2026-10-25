@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": ["GRG", "RBR", "GRG"],
+  "key": {
+    "G": { "tag": "c:ingots/gold" },
+    "R": { "item": "minecraft:redstone" },
+    "B": { "item": "stardustindustry:lv_buffer_core" }
+  },
+  "result": { "id": "stardustindustry:lv_storage_cell" }
+}

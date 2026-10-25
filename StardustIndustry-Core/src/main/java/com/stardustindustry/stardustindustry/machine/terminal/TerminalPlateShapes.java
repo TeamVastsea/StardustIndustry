@@ -13,7 +13,6 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import net.minecraft.core.Direction;
-import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
@@ -61,10 +60,7 @@ public final class TerminalPlateShapes {
     private static VoxelShape shape(TerminalMountBlock mount, Direction facing, ResourceManager manager) {
         String tier = mount.tier().getSerializedName();
         String facingName = facing.getSerializedName();
-        if (manager == null) {
-            return fallback(facing);
-        }
-        Key key = new Key(tier, facing, System.identityHashCode(manager));
+        Key key = new Key(tier, facing, TerminalAssetResources.managerId(manager));
         VoxelShape cached = CACHE.get(key);
         if (cached != null) {
             return cached;
@@ -78,32 +74,32 @@ public final class TerminalPlateShapes {
     }
 
     /** Reads {@code models/block/<tier>_terminal_mount_<facing>.json}'s elements. */
-    private static VoxelShape parse(ResourceManager manager, String tier, String facingName) {
+    static VoxelShape parse(ResourceManager manager, String tier, String facingName) {
         var id = com.stardustindustry.stardustindustry.StardustIndustry.id(
                 "models/block/" + tier + "_terminal_mount_" + facingName + ".json");
         Direction facing = Direction.byName(facingName);
         if (facing == null) {
             return null;
         }
-        Resource resource = manager.getResource(id).orElse(null);
-        if (resource == null) {
-            return null;
-        }
-        try (InputStream in = resource.open();
-             BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
-            JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
-            JsonElement elements = root.get("elements");
-            if (elements == null || !elements.isJsonArray()) {
+        try (InputStream in = TerminalAssetResources.open(manager, id)) {
+            if (in == null) {
                 return null;
             }
-            VoxelShape shape = Shapes.empty();
-            for (JsonElement element : elements.getAsJsonArray()) {
-                VoxelShape part = fromElement(element.getAsJsonObject());
-                if (part != null) {
-                    shape = Shapes.or(shape, part);
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
+                JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
+                JsonElement elements = root.get("elements");
+                if (elements == null || !elements.isJsonArray()) {
+                    return null;
                 }
+                VoxelShape shape = Shapes.empty();
+                for (JsonElement element : elements.getAsJsonArray()) {
+                    VoxelShape part = fromElement(element.getAsJsonObject());
+                    if (part != null) {
+                        shape = Shapes.or(shape, part);
+                    }
+                }
+                return shape.isEmpty() ? null : shape;
             }
-            return shape.isEmpty() ? null : shape;
         } catch (Exception e) {
             com.stardustindustry.stardustindustry.StardustIndustry.LOGGER.warn(
                     "Could not read the plate shape from {} ({}); the rack gets a default "

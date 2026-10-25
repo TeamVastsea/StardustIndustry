@@ -1,0 +1,10 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": ["S S", " I ", "S S"],
+  "key": {
+    "S": { "tag": "c:ingots/steel" },
+    "I": { "item": "minecraft:iron_bars" }
+  },
+  "result": { "id": "stardustindustry:storage_station_frame", "count": 4 }
+}

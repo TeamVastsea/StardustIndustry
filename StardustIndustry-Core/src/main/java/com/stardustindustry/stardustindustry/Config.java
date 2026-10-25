@@ -16,10 +16,6 @@ public class Config {
             .comment("Log a line when a Stardust Industry machine is loaded from disk.")
             .define("logMachineLoading", false);
 
-    public static final ModConfigSpec.IntValue MACHINE_BASE_ENERGY_STORAGE = BUILDER
-            .comment("Baseline energy buffer (in FE) every Stardust Industry machine starts with.")
-            .defineInRange("machineBaseEnergyStorage", 20_000, 0, Integer.MAX_VALUE);
-
     // ---- tanks ----
 
     public static final ModConfigSpec.IntValue TANK_BUCKETS_PER_AIR_BLOCK = BUILDER

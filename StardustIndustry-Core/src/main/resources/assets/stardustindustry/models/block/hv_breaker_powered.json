@@ -1,0 +1,6 @@
+{
+  "parent": "stardustindustry:block/hv_breaker",
+  "textures": {
+    "front": "stardustindustry:block/hv_breaker_front_powered"
+  }
+}

@@ -69,7 +69,7 @@ later feature is expressed through it.
 | Layer | Contents |
 |---|---|
 | L0 framework | multiblock API, machine base, modules, resource abstraction, recipe engine |
-| L1 networks | FE power grid, fluid/gas pipes, heat |
+| L1 networks | Native V/A/W/J electrical grid, fluid/gas pipes, heat |
 | L2 beneficiation | crushing, grinding, screening, flotation, magnetic separation |
 | L3 metallurgy | roasting, smelting, converting, hydrometallurgy, electrolysis |
 | L4 chemical | reactors, distillation, gas handling |
@@ -87,12 +87,16 @@ later feature is expressed through it.
   subclassed per machine. `MachineBlockEntity` owns a `ModuleHost` and a
   structure; `MachineTier` bundles voltage, speed and parallel count.
 - **`capability`** - `ResourceType` and `ResourceStack` give the recipe engine a
-  type-erased view over items, fluids, gases, energy and heat. Ports still speak
-  native NeoForge capabilities so the mod interoperates with the FE ecosystem.
+  type-erased view over items, fluids, gases, energy and heat. Ordinary energy
+  ports expose the mod's `IElectricalPort`, not NeoForge `IEnergyStorage`; only
+  the dedicated FE converter bridges to the FE ecosystem.
 - **`energy`** - `EnergyTier` defines the LV/MV/HV/EHV voltage ladder used by
-  machines, cables and transformers.
+  machines, cables and transformers. The solver uses the same DC approximation
+  (`P = U * I`, `I = P / U`) for every wiring mode; phase modes affect conductor
+  count, nominal voltage and missing-phase faults, not the power formula.
 - **`recipe`** - `ProcessingRecipe` is the shared single-input processing
-  recipe, with probabilistic by-products and time/energy costs. The codec
+  recipe, with probabilistic by-products, processing time and a continuous
+  `powerWatts` requirement (JSON: `power_watts`). The codec
   accepts both a singular `result` and a plural `results` so the addon's
   generated compat recipes parse unchanged.
 

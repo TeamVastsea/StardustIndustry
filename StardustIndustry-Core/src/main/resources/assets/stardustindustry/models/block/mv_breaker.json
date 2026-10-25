@@ -1,0 +1,10 @@
+{
+  "parent": "stardustindustry:block/electrical_orientable",
+  "textures": {
+    "bottom": "stardustindustry:block/electrical_chassis_bottom",
+    "top": "stardustindustry:block/mv_breaker_top",
+    "front": "stardustindustry:block/mv_breaker_front",
+    "back": "stardustindustry:block/mv_breaker_back",
+    "side": "stardustindustry:block/mv_breaker_side"
+  }
+}

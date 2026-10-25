@@ -18,8 +18,8 @@ import net.neoforged.neoforge.fluids.FluidStack;
  *
  * <p>This type is a recipe-engine convenience only. Anything that crosses the
  * machine boundary (ports, pipes, external capabilities) uses the native
- * {@link ItemStack}/{@link FluidStack}/{@code IEnergyStorage} instead, so the
- * mod interoperates with the rest of the FE ecosystem without translation
+ * {@link ItemStack}/{@link FluidStack} or Stardust electrical port instead, so the
+ * native systems can share one recipe representation without translation
  * surprises.</p>
  */
 public record ResourceStack(ResourceType type, ResourceLocation id, int amount) {
@@ -52,8 +52,8 @@ public record ResourceStack(ResourceType type, ResourceLocation id, int amount) 
 
     // ---- energy / heat ----
 
-    public static ResourceStack ofEnergy(int fe) {
-        return new ResourceStack(ResourceType.ENERGY, null, fe);
+    public static ResourceStack ofEnergy(int joules) {
+        return new ResourceStack(ResourceType.ENERGY, null, joules);
     }
 
     public static ResourceStack ofHeat(int units) {

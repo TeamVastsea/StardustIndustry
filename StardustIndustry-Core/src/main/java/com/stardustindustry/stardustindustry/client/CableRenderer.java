@@ -11,10 +11,10 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.stardustindustry.stardustindustry.energy.CableAmpacity;
 import com.stardustindustry.stardustindustry.energy.CableColor;
 import com.stardustindustry.stardustindustry.energy.CableConnection;
+import com.stardustindustry.stardustindustry.energy.CableGeometry;
 import com.stardustindustry.stardustindustry.energy.CableInsulation;
 import com.stardustindustry.stardustindustry.energy.CableService;
 import com.stardustindustry.stardustindustry.energy.TerminalEndpoint;
-import com.stardustindustry.stardustindustry.energy.TerminalGeometry;
 import com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlockEntity;
 
 import net.minecraft.client.Minecraft;
@@ -337,19 +337,19 @@ public class CableRenderer implements BlockEntityRenderer<TerminalMountBlockEnti
                     .fma((float) Math.sin(angle) * radius, other);
         }
 
-        Vector3f startCentre = TerminalGeometry.pointOnCable(from, to, 0f, sagMultiplier);
+        Vector3f startCentre = CableGeometry.point(from, to, 0f, sagMultiplier);
         Vector3f[] previousRing = ring(startCentre, offsets);
         Vector3f previousCentre = startCentre;
         // Segments follow the span: a short jumper costs a couple of rings, a long
         // span subdivides until the curve is smooth, capped so a very long run
         // cannot explode the vertex count. Must match the picker's count.
-        int segments = TerminalGeometry.sagSegmentsFor(from, to);
+        int segments = CableGeometry.segmentsFor(from, to);
         // v advances with distance along the wire, not with the segment index: a
         // long span and a short one then share the same printed scale, so the
         // sheath marks do not stretch on long runs.
         float vPrevious = 0f;
         for (int s = 1; s <= segments; s++) {
-            Vector3f centre = TerminalGeometry.pointOnCable(from, to, (float) s / segments, sagMultiplier);
+            Vector3f centre = CableGeometry.point(from, to, (float) s / segments, sagMultiplier);
             Vector3f[] currentRing = ring(centre, offsets);
             float vCurrent = vPrevious + centre.distance(previousCentre) / TEXTURE_REPEAT_BLOCKS;
             for (int i = 0; i < TUBE_SIDES; i++) {
@@ -480,6 +480,6 @@ public class CableRenderer implements BlockEntityRenderer<TerminalMountBlockEnti
         }
         // The sag drops below the straight line, so grow downward too. The loose
         // end can also reach a player's eye, which is at most a few blocks out.
-        return box.expandTowards(0, -(TerminalGeometry.MAX_SAG + 1.0), 0).inflate(4.0);
+        return box.expandTowards(0, -(CableGeometry.MAX_SAG + 1.0), 0).inflate(4.0);
     }
 }

@@ -33,12 +33,36 @@ public final class MultiblockSelfCheck {
         checkLvParts();
         checkDynamicGeometry();
         checkTankGeometry();
+        checkStorageStationRatings();
         checkLedgerRoundTrip();
         checkClientFailureRoundTrip();
         checkConnectedParts();
         checkMachineRoles();
         checkDynamicScan();
         checkChunkFootprint();
+    }
+
+    /** Keeps all four station ratings ordered and within the native long-joule contract. */
+    private static void checkStorageStationRatings() {
+        long previousCapacity = 0L;
+        long previousTransfer = 0L;
+        for (com.stardustindustry.stardustindustry.machine.storage.StorageTier tier
+                : com.stardustindustry.stardustindustry.machine.storage.StorageTier.values()) {
+            if (tier.capacityPerCellKilowattHours() <= previousCapacity
+                    || tier.nominalPowerWatts() <= previousTransfer) {
+                throw new IllegalStateException("self-check: storage tiers must increase monotonically at " + tier);
+            }
+            long largest = tier.capacityJoulesForCells(7 * 7 * 7);
+            if (largest <= 0) {
+                throw new IllegalStateException("self-check: invalid maximum storage capacity for " + tier);
+            }
+            previousCapacity = tier.capacityPerCellKilowattHours();
+            previousTransfer = tier.nominalPowerWatts();
+        }
+        if (com.stardustindustry.stardustindustry.machine.storage.StorageTier.EHV
+                .capacityJoulesForCells(7 * 7 * 7) != 7_408_800_000_000L) {
+            throw new IllegalStateException("self-check: EHV 9x9x9 station capacity changed unexpectedly");
+        }
     }
 
     /**
@@ -145,6 +169,9 @@ public final class MultiblockSelfCheck {
                 com.stardustindustry.stardustindustry.registry.ModBlocks.LV_BASE.get(),
                 com.stardustindustry.stardustindustry.registry.ModBlocks.LV_ITEM_PORT.get(),
                 com.stardustindustry.stardustindustry.registry.ModBlocks.LV_ENERGY_PORT.get(),
+                com.stardustindustry.stardustindustry.registry.ModBlocks.MV_ENERGY_PORT.get(),
+                com.stardustindustry.stardustindustry.registry.ModBlocks.HV_ENERGY_PORT.get(),
+                com.stardustindustry.stardustindustry.registry.ModBlocks.EHV_ENERGY_PORT.get(),
                 com.stardustindustry.stardustindustry.registry.ModBlocks.LV_FLUID_PORT.get()
         };
         for (net.minecraft.world.level.block.Block block : connected) {

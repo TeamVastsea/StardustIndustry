@@ -112,7 +112,10 @@ public class TerminalMountBlock extends Block implements EntityBlock {
     private final TerminalGrid grid;
 
     public TerminalMountBlock(Properties properties, EnergyTier tier) {
-        super(properties);
+        // Occupied cells live in the block entity, so two equal block states can
+        // have different collision shapes. Enforce this at the owning type rather
+        // than relying on every registration site to remember it.
+        super(properties.dynamicShape());
         this.tier = tier;
         this.grid = TerminalGrid.of(tier);
         // The tier is NOT a blockstate property: each tier is its own block, so it
@@ -267,7 +270,7 @@ public class TerminalMountBlock extends Block implements EntityBlock {
      *
      * @return true when the click was about a cable and has been handled
      */
-    private boolean handleCableEdit(ItemStack stack, Level level, BlockPos pos, Player player, BlockHitResult hit) {
+    private boolean handleCableEdit(ItemStack stack, Level level, BlockPos pos, Player player) {
         if (!(level.getBlockEntity(pos) instanceof TerminalMountBlockEntity mount)) {
             return false;
         }
@@ -300,7 +303,7 @@ public class TerminalMountBlock extends Block implements EntityBlock {
             // the click's impact point is on the plate, which is nowhere near the
             // wire: it validates what was claimed instead (the cable exists on
             // this rack, the dye in hand matches), which is what actually matters.
-            var hitCable = cableUnderRay(level, mount);
+            var hitCable = CablePicking.pick(mount);
             if (hitCable == null) {
                 // Not a cable: let the click fall through to whatever it really hit.
                 return false;
@@ -330,33 +333,6 @@ public class TerminalMountBlock extends Block implements EntityBlock {
         return false;
     }
 
-    /**
-     * The cable the local player's view ray crosses through {@code mount}, or
-     * {@code null}.
-     *
-     * <p>Client only: it needs the camera, which the server does not have.
-     * {@code hit} is deliberately not used — the click's impact point lies on the
-     * rack's plate, while the wire hangs out in the room, so the impact point
-     * says nothing about which wire was aimed at.</p>
-     */
-    private static com.stardustindustry.stardustindustry.energy.CableConnection cableUnderRay(
-            Level level, TerminalMountBlockEntity mount) {
-        net.minecraft.client.player.LocalPlayer player = net.minecraft.client.Minecraft.getInstance().player;
-        if (player == null) {
-            return null;
-        }
-        float partialTick = net.minecraft.client.Minecraft.getInstance()
-                .getTimer().getGameTimeDeltaPartialTick(false);
-        return mount.cableAtRay(player.getEyePosition(partialTick), player.getViewVector(partialTick),
-                CABLE_PICK_RADIUS, player.blockInteractionRange() + CABLE_PICK_REACH);
-    }
-
-    /** How close the aim ray must pass to a cable for it to be clickable, in blocks. */
-    private static final float CABLE_PICK_RADIUS = 0.18f;
-
-    /** Extra reach beyond normal block interaction, so a wire above eye level is still clickable. */
-    private static final double CABLE_PICK_REACH = 4.0;
-
     @Override
     protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level, BlockPos pos,
                                               Player player, InteractionHand hand, BlockHitResult hit) {
@@ -367,7 +343,7 @@ public class TerminalMountBlock extends Block implements EntityBlock {
         // Cables are cut and painted before anything else: they have no collision
         // box, so the ray has to be tested against the wire itself, and a click
         // that lands on a wire must not be read as "place a terminal here".
-        if (handleCableEdit(stack, level, pos, player, hit)) {
+        if (handleCableEdit(stack, level, pos, player)) {
             return ItemInteractionResult.SUCCESS;
         }
 
@@ -607,13 +583,11 @@ public class TerminalMountBlock extends Block implements EntityBlock {
     /** One terminal's block-local box, in the shape space of {@code pos}. */
     private VoxelShape terminalShape(Direction facing, TerminalStyle style, int cell) {
         float[] box = TerminalPoser.blockLocalBox(facing, grid, cell, style);
-        // The poser hands back a [x0,y0,z0,x1,y1,z1] box in block-local 0..1
-        // space; clamp so a model that pokes out of the block cannot produce a
-        // shape the block engine will not accept.
+        // Keep the full model extent. Minecraft accepts voxel shapes outside the
+        // owning block (fences do this too); clamping made EHV's visible last
+        // sixteenth walk-through.
         return Shapes.box(
-                Math.max(0.0, Math.min(1.0, box[0])), Math.max(0.0, Math.min(1.0, box[1])),
-                Math.max(0.0, Math.min(1.0, box[2])), Math.max(0.0, Math.min(1.0, box[3])),
-                Math.max(0.0, Math.min(1.0, box[4])), Math.max(0.0, Math.min(1.0, box[5])));
+                box[0], box[1], box[2], box[3], box[4], box[5]);
     }
 
     /**
@@ -651,7 +625,8 @@ public class TerminalMountBlock extends Block implements EntityBlock {
 
         @Override
         public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> tooltip, TooltipFlag flag) {
-            tooltip.add(Component.translatable("item.stardustindustry.terminal.tip.mount", tier().translationKey())
+            tooltip.add(Component.translatable("item.stardustindustry.terminal.tip.mount",
+                            Component.translatable("tier." + tier().translationKey()))
                     .withStyle(ChatFormatting.GRAY));
         }
     }

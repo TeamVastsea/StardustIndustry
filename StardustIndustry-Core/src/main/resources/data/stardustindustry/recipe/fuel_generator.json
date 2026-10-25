@@ -1,0 +1,27 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "FIF",
+    "CRC",
+    "FIF"
+  ],
+  "key": {
+    "F": {
+      "tag": "c:ingots/iron"
+    },
+    "I": {
+      "item": "minecraft:iron_ingot"
+    },
+    "C": {
+      "tag": "c:ingots/copper"
+    },
+    "R": {
+      "item": "minecraft:furnace"
+    }
+  },
+  "result": {
+    "id": "stardustindustry:fuel_generator",
+    "count": 1
+  }
+}

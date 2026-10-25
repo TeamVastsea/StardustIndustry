@@ -15,7 +15,7 @@ import net.minecraft.util.StringRepresentable;
  *   <li>{@link #ITEM} - a registered item + count</li>
  *   <li>{@link #FLUID} - a fluid type + millibuckets</li>
  *   <li>{@link #GAS} - a gas type + millibuckets (same units, different network)</li>
- *   <li>{@link #ENERGY} - FE</li>
+ *   <li>{@link #ENERGY} - native joules</li>
  *   <li>{@link #HEAT} - thermal units</li>
  * </ul>
  *

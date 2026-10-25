@@ -16,5 +16,5 @@
     }
   ],
   "processing_time": 200,
-  "energy_cost": 20
+  "power_watts": 6600
 }

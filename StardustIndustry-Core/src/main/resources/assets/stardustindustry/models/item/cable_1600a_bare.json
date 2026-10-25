@@ -1,7 +1,6 @@
 {
   "parent": "minecraft:item/generated",
   "textures": {
-    "layer0": "stardustindustry:item/cable_acsr"
-  },
-  "tintindex": 0
+    "layer0": "stardustindustry:item/cable_1600a_bare"
+  }
 }

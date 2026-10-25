@@ -1,0 +1,10 @@
+{
+  "parent": "stardustindustry:block/electrical_orientable",
+  "textures": {
+    "bottom": "stardustindustry:block/hv_storage_station_controller_bottom",
+    "top": "stardustindustry:block/hv_storage_station_controller_top",
+    "front": "stardustindustry:block/hv_storage_station_controller_front",
+    "back": "stardustindustry:block/hv_storage_station_controller_back",
+    "side": "stardustindustry:block/hv_storage_station_controller_side"
+  }
+}

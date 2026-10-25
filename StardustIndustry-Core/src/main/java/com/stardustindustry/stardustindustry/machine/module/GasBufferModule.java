@@ -57,8 +57,8 @@ public final class GasBufferModule implements MachineModule, ModuleHost.Resource
 
     public GasBufferModule(EnergyTier tier) {
         this.tier = tier;
-        this.baseCapacity = Math.max(1000, tier.powerClass() * 1000);
-        this.transferLimit = tier.maxTransfer();
+        this.baseCapacity = Math.max(1000, tier.fluidTransfer() * 20);
+        this.transferLimit = tier.fluidTransfer();
     }
 
     /**
@@ -97,7 +97,7 @@ public final class GasBufferModule implements MachineModule, ModuleHost.Resource
     }
 
     @Override
-    public int buffered() {
+    public long buffered() {
         return gas.amount();
     }
 

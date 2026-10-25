@@ -1,0 +1,6 @@
+{
+  "parent": "stardustindustry:block/transformer_mv_hv",
+  "textures": {
+    "front": "stardustindustry:block/transformer_mv_hv_front_powered"
+  }
+}

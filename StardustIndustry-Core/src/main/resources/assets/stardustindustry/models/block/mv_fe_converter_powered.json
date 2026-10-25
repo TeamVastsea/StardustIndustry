@@ -1,0 +1,6 @@
+{
+  "parent": "stardustindustry:block/mv_fe_converter",
+  "textures": {
+    "front": "stardustindustry:block/mv_fe_converter_front_powered"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": ["DRD", "RCR", "DRD"],
+  "key": {
+    "D": { "item": "minecraft:diamond" },
+    "R": { "item": "minecraft:redstone_block" },
+    "C": { "item": "stardustindustry:lv_storage_cell" }
+  },
+  "result": { "id": "stardustindustry:mv_storage_cell" }
+}

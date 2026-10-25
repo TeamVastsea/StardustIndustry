@@ -125,17 +125,7 @@ public enum CableAmpacity {
      * ordinal-based formula would silently give them the wrong copper baseline.
      * The steps on either side are counted on the copper ladder only.</p>
      */
-    public float ohmsPerBlock(float insulationFactorPercent) {
-        return copperBaselineOhmsPerBlock() * material.resistanceMultiplier()
-                * insulationFactorPercent / 100.0f;
-    }
-
-    /**
-     * Ohms per block for a bare conductor of this class, ignoring any sheath.
-     *
-     * <p>Kept for callers that want to show "conductor only" figures; the value
-     * the simulation uses is {@link #ohmsPerBlock(float)}.</p>
-     */
+    /** Ohms per block. A sheath changes cooling/ampacity, never copper resistance. */
     public float ohmsPerBlock() {
         return copperBaselineOhmsPerBlock() * material.resistanceMultiplier();
     }

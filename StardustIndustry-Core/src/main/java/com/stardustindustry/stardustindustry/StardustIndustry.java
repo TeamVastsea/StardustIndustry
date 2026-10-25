@@ -59,6 +59,7 @@ public class StardustIndustry {
         // Fluid ports swallow a held bucket's right-click before the bucket can
         // empty itself onto the ground.
         NeoForge.EVENT_BUS.register(com.stardustindustry.stardustindustry.machine.PortFluidInteraction.class);
+        NeoForge.EVENT_BUS.register(com.stardustindustry.stardustindustry.energy.ElectricalGridService.class);
         // Collision boxes for terminals are parsed from the resource pack (the
         // plate's block model and the OBJ's extents). A datapack/resource reload
         // can change either, so the parsed copies are dropped with the manager
@@ -103,6 +104,9 @@ public class StardustIndustry {
             event.accept(ModBlocks.LV_FLUID_PORT_ITEM);
             event.accept(ModBlocks.LV_GAS_PORT_ITEM);
             event.accept(ModBlocks.LV_ENERGY_PORT_ITEM);
+            event.accept(ModBlocks.MV_ENERGY_PORT_ITEM);
+            event.accept(ModBlocks.HV_ENERGY_PORT_ITEM);
+            event.accept(ModBlocks.EHV_ENERGY_PORT_ITEM);
             event.accept(ModBlocks.LV_GRINDING_CORE_ITEM);
             event.accept(ModBlocks.LV_HEAT_EXCHANGER_CORE_ITEM);
             event.accept(ModBlocks.LV_PARALLEL_CORE_ITEM);
@@ -111,6 +115,33 @@ public class StardustIndustry {
             event.accept(ModBlocks.FLUID_TANK_SHELL_ITEM);
             event.accept(ModBlocks.GAS_TANK_SHELL_ITEM);
             event.accept(ModBlocks.INDUSTRIAL_GLASS_ITEM);
+            event.accept(ModBlocks.STORAGE_STATION_FRAME_ITEM);
+            event.accept(ModBlocks.STORAGE_STATION_CASING_ITEM);
+            event.accept(ModBlocks.LV_STORAGE_STATION_CONTROLLER_ITEM);
+            event.accept(ModBlocks.MV_STORAGE_STATION_CONTROLLER_ITEM);
+            event.accept(ModBlocks.HV_STORAGE_STATION_CONTROLLER_ITEM);
+            event.accept(ModBlocks.EHV_STORAGE_STATION_CONTROLLER_ITEM);
+            event.accept(ModBlocks.LV_STORAGE_CELL_ITEM);
+            event.accept(ModBlocks.MV_STORAGE_CELL_ITEM);
+            event.accept(ModBlocks.HV_STORAGE_CELL_ITEM);
+            event.accept(ModBlocks.EHV_STORAGE_CELL_ITEM);
+            event.accept(ModBlocks.FUEL_GENERATOR_ITEM);
+            event.accept(ModBlocks.CREATIVE_POWER_SOURCE_ITEM);
+            event.accept(ModBlocks.TRANSFORMER_LV_MV_ITEM);
+            event.accept(ModBlocks.TRANSFORMER_MV_HV_ITEM);
+            event.accept(ModBlocks.TRANSFORMER_HV_EHV_ITEM);
+            event.accept(ModBlocks.LV_BREAKER_ITEM);
+            event.accept(ModBlocks.MV_BREAKER_ITEM);
+            event.accept(ModBlocks.HV_BREAKER_ITEM);
+            event.accept(ModBlocks.EHV_BREAKER_ITEM);
+            event.accept(ModBlocks.LV_FUSE_BOX_ITEM);
+            event.accept(ModBlocks.MV_FUSE_BOX_ITEM);
+            event.accept(ModBlocks.HV_FUSE_BOX_ITEM);
+            event.accept(ModBlocks.EHV_FUSE_BOX_ITEM);
+            event.accept(ModBlocks.LV_FE_CONVERTER_ITEM);
+            event.accept(ModBlocks.MV_FE_CONVERTER_ITEM);
+            event.accept(ModBlocks.HV_FE_CONVERTER_ITEM);
+            event.accept(ModBlocks.EHV_FE_CONVERTER_ITEM);
             event.accept(ModBlocks.LV_TERMINAL_MOUNT_ITEM);
             event.accept(ModBlocks.MV_TERMINAL_MOUNT_ITEM);
             event.accept(ModBlocks.HV_TERMINAL_MOUNT_ITEM);

@@ -25,6 +25,13 @@ dependencies {
     add("localRuntime", files(rootProject.file("libs/Mekanism-1.21.1-10.7.19.85.jar")))
     add("localRuntime", files(rootProject.file("libs/appliedenergistics2-19.2.18.jar")))
     add("localRuntime", files(rootProject.file("libs/guideme-21.1.19.jar")))
+
+    testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
 
 runs {

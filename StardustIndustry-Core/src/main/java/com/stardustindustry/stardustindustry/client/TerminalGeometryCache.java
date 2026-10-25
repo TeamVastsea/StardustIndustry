@@ -272,6 +272,12 @@ public final class TerminalGeometryCache {
             renderType.clearRenderState();
             return;
         }
+        com.mojang.blaze3d.shaders.Uniform fogModelMatrix = shader.getUniform("FogModelMat");
+        if (fogModelMatrix == null) {
+            once("fog-model-matrix-null",
+                    "shader {} has no FogModelMat uniform; terminal fog distance will be incorrect",
+                    shader.getName());
+        }
         once("draw:" + renderType,
                 "drawBatch type={} models={} firstQuads={} shader={}",
                 renderType, models.size(), models.get(0).quadCount(), shader.getName());
@@ -309,21 +315,17 @@ public final class TerminalGeometryCache {
             // wrapper around the matrix.
             shader.setDefaultUniforms(
                     VertexFormat.Mode.QUADS, modelView, projection, minecraft.getWindow());
+            // The stock entity shader computes fog from the raw VBO Position. That
+            // is wrong for this cache: Position is model-local (and often in mm),
+            // while the per-instance pose carries its scale and camera-relative
+            // translation. Keep fog in the pre-view space used by vanilla's
+            // per-frame block path so cylindrical fog retains the world's Y axis.
+            if (fogModelMatrix != null) {
+                fogModelMatrix.set(matrices.get(i));
+            }
             shader.apply();
             model.vertexBuffer.bind();
             model.vertexBuffer.draw();
-        }
-        // A GL error here is the difference between "the draw was issued" and
-        // "the draw happened". An index buffer that is not bound to the VAO, or an
-        // index type that disagrees with the data, shows up as
-        // GL_INVALID_OPERATION (1282) on the first frame and never as an
-        // exception — the screen simply stays empty.
-        int glError = org.lwjgl.opengl.GL11.glGetError();
-        while (glError != 0) {
-            once("gl-error:" + glError,
-                    "GL error 0x{} after drawing {} models of {}",
-                    Integer.toHexString(glError), models.size(), renderType);
-            glError = org.lwjgl.opengl.GL11.glGetError();
         }
         shader.clear();
         VertexBuffer.unbind();
@@ -397,8 +399,10 @@ public final class TerminalGeometryCache {
                 brightness[1] = shade;
                 brightness[2] = shade;
                 brightness[3] = shade;
+                // OBJ materials bake Kd into the quad's vertex colour. Keep that
+                // tint, then multiply in the directional shade.
                 builder.putBulkData(IDENTITY, quad, brightness, 1f, 1f, 1f, 1f,
-                        lightmap, OverlayTexture.NO_OVERLAY, false);
+                        lightmap, OverlayTexture.NO_OVERLAY, true);
             }
             MeshData data = builder.build();
             if (data == null) {
@@ -477,16 +481,14 @@ public final class TerminalGeometryCache {
      * what "I can wire them up but I cannot see them" looked like.</p>
      *
      * <p>The old per-frame path used {@code RenderType.cutout()}, which binds the
-     * block atlas, so its UVs were right by accident of also being the atlas. This
-     * cache needs the atlas <b>and</b> a format it can build itself, so it uses
-     * {@code Sheets.cutoutBlockSheet()} — same {@code NEW_ENTITY} layout as
-     * {@code entitySolid}, same {@code cutout} transparency rule, pointed at the
-     * block atlas. It is also the exact render type vanilla uses for block entity
-     * models that sample the block sheet, so the batching assumptions
-     * (no sorting, depth-tested) match.</p>
+     * block atlas. This cache also needs the {@code NEW_ENTITY} layout, so its
+     * custom render type keeps that same atlas, cutout rule and depth/cull state.
+     * Its only semantic difference from vanilla entity cutout is that fog uses the
+     * per-instance transformed position and lighting uses the directional shade
+     * already baked into {@code Color}.</p>
      */
     private static RenderType renderTypeFor() {
-        return net.minecraft.client.renderer.Sheets.cutoutBlockSheet();
+        return TerminalRenderTypes.terminalCutout();
     }
 
     /**

@@ -3,13 +3,11 @@ package com.stardustindustry.stardustindustry.registry;
 import com.stardustindustry.stardustindustry.machine.MachineBlockEntity;
 import com.stardustindustry.stardustindustry.machine.MachinePortBlock;
 import com.stardustindustry.stardustindustry.machine.MachinePortBlockEntity;
-import com.stardustindustry.stardustindustry.machine.module.EnergyBufferModule;
 import com.stardustindustry.stardustindustry.machine.module.FluidBufferModule;
 import com.stardustindustry.stardustindustry.machine.module.ItemInventoryModule;
 
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
-import net.neoforged.neoforge.energy.IEnergyStorage;
 import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 import net.neoforged.neoforge.items.IItemHandler;
 
@@ -33,10 +31,33 @@ public final class ModCapabilities {
     private ModCapabilities() {}
 
     public static void register(RegisterCapabilitiesEvent event) {
-        // Energy port -> the machine's FE buffer.
+        event.registerBlock(ModCapabilityTypes.ELECTRICAL_PORT,
+                (level, pos, state, blockEntity, context) ->
+                        blockEntity instanceof com.stardustindustry.stardustindustry.energy.IElectricalPort port
+                                ? port : null,
+                ModBlocks.LV_ENERGY_PORT.get(),
+                ModBlocks.MV_ENERGY_PORT.get(),
+                ModBlocks.HV_ENERGY_PORT.get(),
+                ModBlocks.EHV_ENERGY_PORT.get());
+
+        event.registerBlock(ModCapabilityTypes.ELECTRICAL_PORT,
+                (level, pos, state, blockEntity, side) ->
+                        blockEntity instanceof com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceBlockEntity device
+                                ? device.portFor(side) : null,
+                ModBlocks.FUEL_GENERATOR.get(), ModBlocks.CREATIVE_POWER_SOURCE.get(),
+                ModBlocks.TRANSFORMER_LV_MV.get(), ModBlocks.TRANSFORMER_MV_HV.get(), ModBlocks.TRANSFORMER_HV_EHV.get(),
+                ModBlocks.LV_BREAKER.get(), ModBlocks.MV_BREAKER.get(), ModBlocks.HV_BREAKER.get(), ModBlocks.EHV_BREAKER.get(),
+                ModBlocks.LV_FUSE_BOX.get(), ModBlocks.MV_FUSE_BOX.get(), ModBlocks.HV_FUSE_BOX.get(), ModBlocks.EHV_FUSE_BOX.get(),
+                ModBlocks.LV_FE_CONVERTER.get(), ModBlocks.MV_FE_CONVERTER.get(),
+                ModBlocks.HV_FE_CONVERTER.get(), ModBlocks.EHV_FE_CONVERTER.get());
+
+        // The deliberate FE boundary: no other Core block registers this capability.
         event.registerBlock(Capabilities.EnergyStorage.BLOCK,
-                (level, pos, state, blockEntity, side) -> energyStorage(blockEntity),
-                ModBlocks.LV_ENERGY_PORT.get());
+                (level, pos, state, blockEntity, side) ->
+                        blockEntity instanceof com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceBlockEntity device
+                                ? device.feStorage() : null,
+                ModBlocks.LV_FE_CONVERTER.get(), ModBlocks.MV_FE_CONVERTER.get(),
+                ModBlocks.HV_FE_CONVERTER.get(), ModBlocks.EHV_FE_CONVERTER.get());
 
         // Fluid ports forward to the machine's fluid buffer. A machine without a
         // tank module reports nothing, so a port on a non-fluid machine is inert
@@ -123,15 +144,6 @@ public final class ModCapabilities {
         }
         ItemInventoryModule inventory = controller.modules().get(ItemInventoryModule.class);
         return inventory != null ? inventory.capability() : null;
-    }
-
-    private static IEnergyStorage energyStorage(Object blockEntity) {
-        MachineBlockEntity controller = controllerOf(blockEntity);
-        if (controller == null) {
-            return null;
-        }
-        EnergyBufferModule energy = controller.modules().get(EnergyBufferModule.class);
-        return energy != null ? energy.capability() : null;
     }
 
     private static IFluidHandler fluidHandler(Object blockEntity, int rateLimit) {

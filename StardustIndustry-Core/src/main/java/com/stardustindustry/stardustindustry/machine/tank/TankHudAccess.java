@@ -1,6 +1,6 @@
 package com.stardustindustry.stardustindustry.machine.tank;
 
-import com.stardustindustry.stardustindustry.multiblock.TankMembershipRegistry;
+import com.stardustindustry.stardustindustry.multiblock.MultiblockMembershipRegistry;
 import com.stardustindustry.stardustindustry.multiblock.provider.TankStructureProvider;
 import com.stardustindustry.stardustindustry.registry.ModBlocks;
 
@@ -23,7 +23,7 @@ import net.minecraft.world.level.block.state.BlockState;
  *
  * <p>The lookup is cheap and layered: a cell that is itself a tank block entity
  * answers directly; a port answers through its binding; a frame or glass cell
- * answers through {@link TankMembershipRegistry}. A registry miss (a fresh chunk,
+ * answers through {@link MultiblockMembershipRegistry}. A registry miss (a fresh chunk,
  * a machine that has not revalidated yet) falls back to a flood-fill of the
  * surrounding tank material, so pointing at a tank always works even before the
  * cache has warmed.</p>
@@ -44,7 +44,7 @@ public final class TankHudAccess {
             return tank;
         }
 
-        BlockPos anchor = TankMembershipRegistry.anchorOf(level, pos);
+        BlockPos anchor = MultiblockMembershipRegistry.controllerOf(level, pos);
         if (anchor == null) {
             BlockState state = level.getBlockState(pos);
             if (!TankStructureProvider.isTankMaterial(state)) {

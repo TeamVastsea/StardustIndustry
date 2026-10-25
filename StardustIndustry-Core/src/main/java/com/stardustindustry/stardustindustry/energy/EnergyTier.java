@@ -2,56 +2,29 @@ package com.stardustindustry.stardustindustry.energy;
 
 import net.minecraft.util.StringRepresentable;
 
-/**
- * Voltage tiers used across the whole power system.
- *
- * <p>Four tiers follow the long-standing convention used by industrial mods
- * (IC2, GregTech): {@code LV} through {@code EHV}. <b>This enum separates two
- * ideas that older code merged into a single number</b>:</p>
- *
- * <ul>
- *   <li>{@link #volts()} — the <b>physical line voltage</b> the tier runs at
- *       (380 V / 10 kV / 110 kV / 500 kV). This is what decides whether a
- *       connection is allowed at all: a wire or machine is rated for a voltage,
- *       and anything above that rating breaks it. See
- *       {@code docs/electric-power-system-design.md}.</li>
- *   <li>{@link #powerClass()} — the game's <b>FE/t "power class"</b>, the
- *       long-standing balance number (32 / 128 / 512 / 2048). It is deliberately
- *       <b>not</b> equal to {@link #volts()}: the physical anchor
- *       ({@code 1 FE = 1 J}) is not fixed yet, so the FE numbers stay as they
- *       were to keep existing machines balanced.
- *       {@code maxTransfer() = powerClass * maxAmperage}.</li>
- * </ul>
- *
- * <p>{@link #maxAmperage()} is the true ampacity of one connection at this tier,
- * on the same scale as a wire's {@code I_max}.</p>
- */
+/** The four physical voltage levels used by the native electrical system. */
 public enum EnergyTier implements StringRepresentable {
     /**
      * Low voltage: 380 V three-phase. 220 V single-phase is a wiring variant
      * inside this same tier, not a separate level.
      */
-    LV("lv", 380, 32, 1, 64, 5_000),
+    LV("lv", 380, 220, 5_000),
     /** Medium voltage: 10 kV, the workhorse for transmission. */
-    MV("mv", 10_000, 128, 2, 1_024, 20_000),
+    MV("mv", 10_000, 10_000, 20_000),
     /** High voltage: 110 kV, bulk transmission. */
-    HV("hv", 110_000, 512, 4, 8_192, 80_000),
+    HV("hv", 110_000, 110_000, 80_000),
     /** Extreme high voltage: 500 kV, long-distance transmission / generation side. */
-    EHV("ehv", 500_000, 2_048, 8, 65_536, 320_000);
+    EHV("ehv", 500_000, 500_000, 320_000);
 
     private final String name;
-    private final int volts;
-    private final int powerClass;
-    private final int maxAmperage;
-    private final int maxBuffer;
+    private final int lineVolts;
+    private final int singlePhaseVolts;
     private final int fluidTransfer;
 
-    EnergyTier(String name, int volts, int powerClass, int maxAmperage, int maxBuffer, int fluidTransfer) {
+    EnergyTier(String name, int lineVolts, int singlePhaseVolts, int fluidTransfer) {
         this.name = name;
-        this.volts = volts;
-        this.powerClass = powerClass;
-        this.maxAmperage = maxAmperage;
-        this.maxBuffer = maxBuffer;
+        this.lineVolts = lineVolts;
+        this.singlePhaseVolts = singlePhaseVolts;
         this.fluidTransfer = fluidTransfer;
     }
 
@@ -61,41 +34,14 @@ public enum EnergyTier implements StringRepresentable {
         return name;
     }
 
-    /**
-     * The physical line voltage this tier runs at, in volts
-     * (380 / 10 000 / 110 000 / 500 000).
-     *
-     * <p>Used for insulation and over-voltage checks and for display. It is
-     * <b>not</b> the FE balance number — see {@link #powerClass()}.</p>
-     */
+    /** Physical line-to-line voltage in volts. */
     public int volts() {
-        return volts;
+        return lineVolts;
     }
 
-    /**
-     * The FE/t carried by one amp at this tier — a game-balance number, not a
-     * physical wattage (the {@code 1 FE = 1 J} anchor is not fixed yet).
-     *
-     * <p>Formerly {@code voltage()}. Kept unchanged (32 / 128 / 512 / 2048) so
-     * existing machine buffers and transfer rates do not shift.</p>
-     */
-    public int powerClass() {
-        return powerClass;
-    }
-
-    /** How many amps a single connection of this tier can carry. */
-    public int maxAmperage() {
-        return maxAmperage;
-    }
-
-    /** Maximum instantaneous transfer of one connection: {@code powerClass * amperage}. */
-    public int maxTransfer() {
-        return powerClass * maxAmperage;
-    }
-
-    /** A sensible internal energy buffer for a machine of this tier. */
-    public int maxBuffer() {
-        return maxBuffer;
+    /** Nominal line-to-neutral voltage for single-phase wiring. */
+    public int singlePhaseVolts() {
+        return singlePhaseVolts;
     }
 
     /**
@@ -114,7 +60,12 @@ public enum EnergyTier implements StringRepresentable {
 
     /** True when a connection of this tier can carry the {@code incoming} voltage. */
     public boolean accepts(EnergyTier incoming) {
-        return incoming.volts <= this.volts;
+        return incoming.lineVolts <= this.lineVolts;
+    }
+
+    /** Number of voltage levels between this rating and an incoming supply. */
+    public int overvoltageSteps(EnergyTier incoming) {
+        return Math.max(0, incoming.ordinal() - ordinal());
     }
 
     /**

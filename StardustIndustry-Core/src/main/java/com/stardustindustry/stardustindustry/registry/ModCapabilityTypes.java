@@ -26,5 +26,11 @@ public final class ModCapabilityTypes {
                     StardustIndustry.id("gas_handler"),
                     IGasHandler.class);
 
+    /** Native voltage/current/power port. Ordinary machines never expose NeoForge FE. */
+    public static final BlockCapability<com.stardustindustry.stardustindustry.energy.IElectricalPort,
+            net.minecraft.core.Direction> ELECTRICAL_PORT = BlockCapability.createSided(
+                    StardustIndustry.id("electrical_port"),
+                    com.stardustindustry.stardustindustry.energy.IElectricalPort.class);
+
     private ModCapabilityTypes() {}
 }

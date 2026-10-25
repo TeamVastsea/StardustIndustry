@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": ["RPR", "CSC", "RPR"],
+  "key": {
+    "R": { "item": "minecraft:amethyst_shard" },
+    "P": { "item": "stardustindustry:ehv_energy_port" },
+    "C": { "item": "minecraft:comparator" },
+    "S": { "item": "stardustindustry:storage_station_casing" }
+  },
+  "result": { "id": "stardustindustry:ehv_storage_station_controller" }
+}

@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": ["SQS", "QCQ", "SQS"],
+  "key": {
+    "S": { "tag": "c:ingots/steel" },
+    "Q": { "item": "minecraft:quartz" },
+    "C": { "item": "stardustindustry:steel_casing" }
+  },
+  "result": { "id": "stardustindustry:storage_station_casing", "count": 4 }
+}

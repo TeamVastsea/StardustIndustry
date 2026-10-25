@@ -99,7 +99,7 @@ v2 确立**双轨制**：
                                ▼
                      ModifierSet（共用加成机制）
                                ▼
-              RecipeRunnerModule / EnergyBufferModule 读取
+              RecipeRunnerModule / JouleStorageModule 读取
 ```
 
 **端口、模块、能力、加成全部共用。**两种机器的差异被隔离在 `StructureProvider` 一个接口后面。
@@ -222,7 +222,7 @@ List<PlacedPart> placedParts;   // { offset, originalState, role, fillerKind, po
 
 ### 4.5 电压等级体系（**本轮重做：取消"底座等级 = 电压"**）
 
-> **注（电力系统重构进行中）**：完整电压/电流/功率/线损模型见
+> **注（当前电力系统）**：完整电压/电流/功率/线损模型见
 > [`electric-power-system-design.md`](./electric-power-system-design.md)。
 > **本节中的"底座方块等级决定整机电压"已作废**，理由见下。
 
@@ -232,7 +232,8 @@ List<PlacedPart> placedParts;   // { offset, originalState, role, fillerKind, po
 
 - **静态机器不再有"底座等级"**：底座层不再是等级载体，也不再是"自由发挥"的地方。
 - **额定电压写死在机器模板里**（见 §4.5.1）。
-- **端口**是机器对外的电气接口，机器通过端口接入电网。
+- **端口**是机器对外的电气接口，机器通过原生 `IElectricalPort` 接入电网；普通能量端口
+  不暴露 FE `IEnergyStorage`，只有专用 FE 转换器负责跨模组桥接。
 
 #### 4.5.1 静态机器的新设定（取代原"底座等级"体系）
 
@@ -416,12 +417,13 @@ public record FillerModifier(
 
 ```java
 ModifierSet m = machine.modifiers();
-int time  = Math.max(1, Math.round(recipe.processingTime() / m.speedMultiplier()));
-int cost  = Math.max(1, Math.round(recipe.energyCost() * m.energyMultiplier()));
+int time = m.effectiveProcessingTime(recipe.processingTime());
+long powerWatts = m.effectivePowerWatts(recipe.powerWatts());
 int par   = 1 + m.parallelBonus();
 ```
 
-`EnergyBufferModule.capacity()` × `bufferMultiplier()` × `tier.capacityFactor()`。
+`JouleStorageModule.capacityJoules()` 按 `bufferMultiplier()` 调整容量；运行时按
+`powerWatts` 将 W 换算为每 tick 扣除的 J，并保留余数。
 
 `ModifierSet` 在**结构成型/变化时**重算并缓存，不每 tick 计算。
 
@@ -646,16 +648,16 @@ StardustIndustry-AE2Ex/.../ae2ex/           AE2 扩展入口（当前为骨架�
 
 ```
 放置控制器 → (未成型, 投影显示需搭建)
-   ↓ 玩家搭主体 + 基座层放满底座/端口/工程块（同级！）
+   ↓ 玩家按模板搭主体 + 基座层端口/工程块/指定结构块
 安装工具右键 → StaticStructureProvider.evaluate()
-   ├─ 失败：投影指出缺失格 / 空槽 / 混级（红色）
+   ├─ 失败：投影指出缺失格 / 空槽 / 模板不匹配（红色）
    └─ 成功：formed=true, locked=true
             主体方块 → 隐形状态（底座保留可见）
             客户端切换成型模型 + 动画
-            电压等级由底座方块等级决定
+            额定电压由机器模板决定
             ModifierSet 由基座工程块算出并缓存
    ↓
-工作循环：RecipeRunnerModule / EnergyBufferModule 读 ModifierSet + 等级
+工作循环：RecipeRunnerModule / JouleStorageModule 读 ModifierSet + 额定电压
    ↓
    ├─ 安装工具 Shift+右键 → 参数 GUI → [拆除] → 返还全部（加工中返还原材料）
    └─ 镐子破坏任意格     → 整体解体 + 加工品销毁（惩罚）
@@ -785,7 +787,8 @@ StardustIndustry-AE2Ex/.../ae2ex/           AE2 扩展入口（当前为骨架�
 - `multiblock/provider/StaticStructureProvider.java` — `modifiersOf` 改为委托 `FillerRegistry`（删除内联 switch）
 - `registry/ModBlocks.java` — 注册 LV 一套：`lv_base`、`lv_item_port`、`lv_fluid_port`、`lv_energy_port`、四个工程块；`registerPartTypes()` 补分类与 `TierMaterials` 等级映射
 - `machine/module/RecipeRunnerModule.java` — 接入 modifier：速度→处理时间、能耗→每 tick 耗能；`onStructureChanged` 时放弃进行中配方以便按新加成重算
-- `machine/module/EnergyBufferModule.java` — `capacity()` 随 buffer 倍率动态变化
+- `machine/module/JouleStorageModule.java` — 替代旧 `EnergyBufferModule`，以 `long` J 存储；
+  `capacityJoules()` 随 buffer 倍率动态变化，`maxPowerWatts()` 限制功率
 - `machine/MachineBlockEntity.java` — 新增 `modifiers()` 便捷读取；`chargeIdleDraw()` 待机耗电（仅成型且有能量模块时按 tier 电压扣电，欠能即停机保留进度）；`isPowered()`
 - `StardustIndustry.java` — common setup 调用 `FillerRegistry::registerDefaults`；创造栏加入 LV 一套
 - `multiblock/MultiblockSelfCheck.java` — 新增工程块注册表自检、LV 一套接线自检

@@ -11,7 +11,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
-import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
 
 /**
@@ -90,10 +89,7 @@ public final class TerminalPoseReader {
 
     /** The pose of {@code style}, or {@link Pose#defaults()} when unreadable. */
     public static Pose of(ResourceManager manager, TerminalStyle style) {
-        if (manager == null) {
-            return Pose.defaults();
-        }
-        Key key = new Key(style.poseFile(), System.identityHashCode(manager));
+        Key key = new Key(style.poseFile(), TerminalAssetResources.managerId(manager));
         Pose cached = CACHE.get(key);
         if (cached != null) {
             return cached;
@@ -108,27 +104,27 @@ public final class TerminalPoseReader {
         // a ResourceLocation does not append an extension on its own.
         var id = com.stardustindustry.stardustindustry.StardustIndustry.id(
                 "models/terminal/" + style.poseFile() + ".json");
-        Resource resource = manager.getResource(id).orElse(null);
-        if (resource == null) {
-            return Pose.defaults();
-        }
-        try (InputStream in = resource.open();
-             BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
-            JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
-            return new Pose(
-                    objectField(root, "offset", "x", 0f),
-                    objectField(root, "offset", "y", 0f),
-                    objectField(root, "offset", "z", 0f),
-                    floatField(root, "scale", 1f),
-                    objectField(root, "origin", "x", 0f),
-                    objectField(root, "origin", "y", 0f),
-                    objectField(root, "origin", "z", 0f),
-                    objectField(root, "rotation", "x", 0f),
-                    objectField(root, "rotation", "y", 0f),
-                    objectField(root, "rotation", "z", 0f),
-                    stringField(root, "mirror", ""),
-                    floatField(root, "mirrorOffset", 0f),
-                    floatField(root, "objUnitsPerBlock", 1000f));
+        try (InputStream in = TerminalAssetResources.open(manager, id)) {
+            if (in == null) {
+                return Pose.defaults();
+            }
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
+                JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
+                return new Pose(
+                        objectField(root, "offset", "x", 0f),
+                        objectField(root, "offset", "y", 0f),
+                        objectField(root, "offset", "z", 0f),
+                        floatField(root, "scale", 1f),
+                        objectField(root, "origin", "x", 0f),
+                        objectField(root, "origin", "y", 0f),
+                        objectField(root, "origin", "z", 0f),
+                        objectField(root, "rotation", "x", 0f),
+                        objectField(root, "rotation", "y", 0f),
+                        objectField(root, "rotation", "z", 0f),
+                        stringField(root, "mirror", ""),
+                        floatField(root, "mirrorOffset", 0f),
+                        floatField(root, "objUnitsPerBlock", 1000f));
+            }
         } catch (Exception e) {
             com.stardustindustry.stardustindustry.StardustIndustry.LOGGER.warn(
                     "Could not read terminal pose {} ({}); using defaults for collisions",

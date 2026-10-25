@@ -4,7 +4,7 @@ import com.stardustindustry.stardustindustry.capability.ResourceType;
 import com.stardustindustry.stardustindustry.energy.EnergyTier;
 import com.stardustindustry.stardustindustry.machine.MachineBlockEntity;
 import com.stardustindustry.stardustindustry.machine.MachineTier;
-import com.stardustindustry.stardustindustry.machine.module.EnergyBufferModule;
+import com.stardustindustry.stardustindustry.machine.module.JouleStorageModule;
 import com.stardustindustry.stardustindustry.machine.module.ItemInventoryModule;
 import com.stardustindustry.stardustindustry.machine.module.ItemInventoryModule.SlotGroup;
 import com.stardustindustry.stardustindustry.machine.module.RecipeRunnerModule;
@@ -37,8 +37,11 @@ import net.minecraft.world.level.block.state.BlockState;
  */
 public class CrusherBlockEntity extends MachineBlockEntity {
 
+    private static final long BASE_PROCESS_POWER_WATTS = 6_600L;
+    private static final long STANDBY_POWER_WATTS = 100L;
+
     private final ItemInventoryModule inventory;
-    private final EnergyBufferModule energy;
+    private final JouleStorageModule energy;
 
     /** The crusher's structure, built once and shared by checker and renderer. */
     private static final com.stardustindustry.stardustindustry.multiblock.provider.StaticStructureProvider PROVIDER =
@@ -51,8 +54,12 @@ public class CrusherBlockEntity extends MachineBlockEntity {
         this.inventory = modules().provide(ResourceType.ITEM,
                 modules().add(new ItemInventoryModule(SlotGroup.INPUT, SlotGroup.OUTPUT, SlotGroup.OUTPUT, SlotGroup.UPGRADE)));
         this.energy = modules().provide(ResourceType.ENERGY,
-                modules().add(new EnergyBufferModule(EnergyTier.LV)));
-        modules().add(new RecipeRunnerModule(inventory, energy));
+                modules().add(new JouleStorageModule(EnergyTier.LV, 13_200L,
+                        BASE_PROCESS_POWER_WATTS + STANDBY_POWER_WATTS)));
+        RecipeRunnerModule runner = modules().add(new RecipeRunnerModule(inventory, energy));
+        energy.setPowerOverride(() -> Math.max(
+                BASE_PROCESS_POWER_WATTS + STANDBY_POWER_WATTS,
+                saturatedAdd(runner.powerWatts(), STANDBY_POWER_WATTS)));
 
         initialiseModules();
     }
@@ -66,7 +73,21 @@ public class CrusherBlockEntity extends MachineBlockEntity {
         return inventory;
     }
 
-    public EnergyBufferModule energy() {
+    public JouleStorageModule energy() {
         return energy;
+    }
+
+    /** The grid asks for the recipe's full 6.6 kW rating while the local buffer has room. */
+    public long requestedPowerWatts() {
+        return energy.storedJoules() < energy.capacityJoules() ? energy.maxPowerWatts() : 0L;
+    }
+
+    @Override
+    protected long idleDrawWatts() {
+        return STANDBY_POWER_WATTS;
+    }
+
+    private static long saturatedAdd(long left, long right) {
+        return left > Long.MAX_VALUE - right ? Long.MAX_VALUE : left + right;
     }
 }

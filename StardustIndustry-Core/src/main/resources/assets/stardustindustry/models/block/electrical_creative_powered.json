@@ -1,0 +1,6 @@
+{
+  "parent": "stardustindustry:block/electrical_creative",
+  "textures": {
+    "front": "minecraft:block/redstone_lamp_on"
+  }
+}

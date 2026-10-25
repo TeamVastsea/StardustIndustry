@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": ["RPR", "CSC", "RPR"],
+  "key": {
+    "R": { "item": "minecraft:emerald" },
+    "P": { "item": "stardustindustry:hv_energy_port" },
+    "C": { "item": "minecraft:comparator" },
+    "S": { "item": "stardustindustry:storage_station_casing" }
+  },
+  "result": { "id": "stardustindustry:hv_storage_station_controller" }
+}
