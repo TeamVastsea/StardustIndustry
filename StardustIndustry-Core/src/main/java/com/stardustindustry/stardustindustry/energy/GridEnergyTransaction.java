@@ -2,17 +2,18 @@ package com.stardustindustry.stardustindustry.energy;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
-import java.util.IdentityHashMap;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /** Preflights every endpoint before committing one tick of native-grid energy. */
 final class GridEnergyTransaction {
     private final Remainders remainders;
     private final List<Transfer> transfers = new ArrayList<>();
-    private final Map<Object, Direction> accounts = new IdentityHashMap<>();
+    private final Map<Object, Direction> accounts = new HashMap<>();
 
     GridEnergyTransaction(Remainders remainders) {
         this.remainders = Objects.requireNonNull(remainders);
@@ -70,20 +71,44 @@ final class GridEnergyTransaction {
     }
 
     static final class Remainders {
-        private final Map<Object, long[]> byAccount = new IdentityHashMap<>();
+        private final Map<Object, long[]> byAccount = new HashMap<>();
+        private final ElectricalNetworkSavedData persistent;
+
+        Remainders() {
+            this(null);
+        }
+
+        Remainders(ElectricalNetworkSavedData persistent) {
+            this.persistent = persistent;
+        }
 
         void retainAccounts(Collection<?> accounts) {
-            var retained = Collections.newSetFromMap(new IdentityHashMap<Object, Boolean>());
-            retained.addAll(accounts);
+            var retained = new HashSet<>(accounts);
             byAccount.keySet().removeIf(account -> !retained.contains(account));
+            if (persistent != null) {
+                Set<ElectricalAccountKey> stableAccounts = new HashSet<>();
+                for (Object account : retained) {
+                    if (account instanceof ElectricalAccountKey stable) {
+                        stableAccounts.add(stable);
+                    }
+                }
+                persistent.retainEnergyRemainderAccounts(stableAccounts);
+            }
         }
 
         long get(Object account, Direction direction) {
+            if (persistent != null && account instanceof ElectricalAccountKey stable) {
+                return persistent.energyRemainder(stable, direction == Direction.EXTRACT);
+            }
             long[] values = byAccount.get(account);
             return values == null ? 0L : values[direction.ordinal()];
         }
 
         void set(Object account, Direction direction, long value) {
+            if (persistent != null && account instanceof ElectricalAccountKey stable) {
+                persistent.setEnergyRemainder(stable, direction == Direction.EXTRACT, value);
+                return;
+            }
             if (value == 0L) {
                 long[] values = byAccount.get(account);
                 if (values == null) {

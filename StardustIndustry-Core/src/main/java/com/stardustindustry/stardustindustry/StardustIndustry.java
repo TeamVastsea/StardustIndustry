@@ -60,6 +60,7 @@ public class StardustIndustry {
         // empty itself onto the ground.
         NeoForge.EVENT_BUS.register(com.stardustindustry.stardustindustry.machine.PortFluidInteraction.class);
         NeoForge.EVENT_BUS.register(com.stardustindustry.stardustindustry.energy.ElectricalGridService.class);
+        NeoForge.EVENT_BUS.addListener(com.stardustindustry.stardustindustry.demo.DemoCommands::register);
         // Collision boxes for terminals are parsed from the resource pack (the
         // plate's block model and the OBJ's extents). A datapack/resource reload
         // can change either, so the parsed copies are dropped with the manager
@@ -151,6 +152,12 @@ public class StardustIndustry {
             event.accept(ModItems.HV_TERMINAL);
             event.accept(ModItems.EHV_TERMINAL);
             event.accept(ModItems.INSTALLATION_TOOL);
+            event.accept(ModItems.ELECTRICIANS_METER);
+            event.accept(ModItems.LV_FUSE);
+            event.accept(ModItems.MV_FUSE);
+            event.accept(ModItems.HV_FUSE);
+            event.accept(ModItems.EHV_FUSE);
+            ModItems.cables().forEach(event::accept);
             event.accept(ModItems.CRUSHED_IRON);
         }
     }

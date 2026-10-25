@@ -51,6 +51,14 @@ public class StardustIndustryClient {
     static void onRegisterMenuScreens(net.neoforged.neoforge.client.event.RegisterMenuScreensEvent event) {
         event.register(com.stardustindustry.stardustindustry.registry.ModMenus.MACHINE_PARAMS.get(),
                 com.stardustindustry.stardustindustry.client.MachineParamsScreen::new);
+        event.register(com.stardustindustry.stardustindustry.registry.ModMenus.ELECTRICAL_DEVICE.get(),
+                com.stardustindustry.stardustindustry.client.ElectricalDeviceScreen::new);
+        event.register(com.stardustindustry.stardustindustry.registry.ModMenus.CRUSHER.get(),
+                com.stardustindustry.stardustindustry.client.CrusherScreen::new);
+        event.register(com.stardustindustry.stardustindustry.registry.ModMenus.STORAGE_STATION.get(),
+                com.stardustindustry.stardustindustry.client.StorageStationScreen::new);
+        event.register(com.stardustindustry.stardustindustry.registry.ModMenus.ELECTRICAL_DIAGNOSTIC.get(),
+                com.stardustindustry.stardustindustry.client.ElectricalDiagnosticScreen::new);
     }
 
     /**

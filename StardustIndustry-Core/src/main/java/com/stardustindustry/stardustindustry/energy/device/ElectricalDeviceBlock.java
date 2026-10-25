@@ -2,6 +2,7 @@ package com.stardustindustry.stardustindustry.energy.device;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.ItemInteractionResult;
@@ -62,16 +63,28 @@ public final class ElectricalDeviceBlock extends Block implements EntityBlock {
     }
 
     @Override
+    protected void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState,
+                            boolean movedByPiston) {
+        if (!state.is(newState.getBlock()) && !level.isClientSide()
+                && level.getBlockEntity(pos) instanceof ElectricalDeviceBlockEntity device) {
+            device.dropFuelInventory();
+        }
+        super.onRemove(state, level, pos, newState, movedByPiston);
+    }
+
+    @Override
     protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos, Player player,
                                                BlockHitResult hit) {
         if (level.getBlockEntity(pos) instanceof ElectricalDeviceBlockEntity device) {
             if (!level.isClientSide()) {
-                if (player.isShiftKeyDown() && kind == ElectricalDeviceKind.CREATIVE_SOURCE) {
-                    device.cycleCreativeTier();
-                } else {
+                if (player.isShiftKeyDown()) {
                     device.toggleSwitch();
+                    player.displayClientMessage(device.statusText(), true);
+                } else if (player instanceof net.minecraft.server.level.ServerPlayer serverPlayer) {
+                    com.stardustindustry.stardustindustry.menu.ElectricalUi.openDevice(serverPlayer, device);
+                } else {
+                    return InteractionResult.PASS;
                 }
-                player.displayClientMessage(device.statusText(), true);
             }
             return InteractionResult.sidedSuccess(level.isClientSide());
         }
@@ -81,11 +94,41 @@ public final class ElectricalDeviceBlock extends Block implements EntityBlock {
     @Override
     protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level, BlockPos pos,
                                               Player player, InteractionHand hand, BlockHitResult hit) {
-        if (!(stack.getItem() instanceof com.stardustindustry.stardustindustry.machine.tool.InstallationToolItem)
-                || !(level.getBlockEntity(pos) instanceof ElectricalDeviceBlockEntity device)) {
-            if (kind == ElectricalDeviceKind.FUEL_GENERATOR && stack.getBurnTime(null) > 0
-                    && level.getBlockEntity(pos) instanceof ElectricalDeviceBlockEntity generator) {
-                if (!level.isClientSide() && generator.addFuel(stack.getBurnTime(null))) {
+        if (!(level.getBlockEntity(pos) instanceof ElectricalDeviceBlockEntity device)) {
+            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+        }
+        if (hand == InteractionHand.MAIN_HAND
+                && com.stardustindustry.stardustindustry.energy.ElectriciansMeterItem
+                        .offhandMeterOwnsEmptyMainHand(
+                                player.getMainHandItem(), player.getOffhandItem())) {
+            return ItemInteractionResult.SKIP_DEFAULT_BLOCK_INTERACTION;
+        }
+        if (stack.getItem() instanceof com.stardustindustry.stardustindustry.energy.ElectriciansMeterItem) {
+            if (!level.isClientSide()
+                    && player instanceof net.minecraft.server.level.ServerPlayer serverPlayer) {
+                com.stardustindustry.stardustindustry.menu.ElectricalUi.openDiagnostic(serverPlayer, pos);
+            }
+            return ItemInteractionResult.SUCCESS;
+        }
+        if (stack.getItem() instanceof FuseItem fuse && kind.fuseBox()) {
+            if (!level.isClientSide()) {
+                if (device.replaceFuse(fuse.tier())) {
+                    if (!player.getAbilities().instabuild) {
+                        stack.shrink(1);
+                    }
+                    player.displayClientMessage(Component.translatable(
+                            "message.stardustindustry.electrical.fuse.replaced"), true);
+                } else {
+                    player.displayClientMessage(Component.translatable(
+                            "message.stardustindustry.electrical.fuse.rejected",
+                            Component.translatable("tier." + kind.lowTier().translationKey())), true);
+                }
+            }
+            return ItemInteractionResult.SUCCESS;
+        }
+        if (!(stack.getItem() instanceof com.stardustindustry.stardustindustry.machine.tool.InstallationToolItem)) {
+            if (kind == ElectricalDeviceKind.FUEL_GENERATOR && stack.getBurnTime(null) > 0) {
+                if (!level.isClientSide() && device.insertFuelItem(stack)) {
                     stack.shrink(1);
                 }
                 return ItemInteractionResult.SUCCESS;

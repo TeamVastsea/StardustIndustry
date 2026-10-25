@@ -3,6 +3,7 @@ package com.stardustindustry.stardustindustry.energy;
 /** Pure overload/cooldown curve used by the grid solver and unit tests. */
 public final class CableThermalModel {
     private static final double FAILURE_EPSILON = 1.0e-12;
+    private static final int FULL_COOLDOWN_TICKS = 30 * ElectricalUnits.TICKS_PER_SECOND;
     public static final int DESTRUCTIVE_CONFIRMATION_TICKS = 40;
 
     private CableThermalModel() {}
@@ -19,6 +20,16 @@ public final class CableThermalModel {
 
     public static boolean failed(double heat) {
         return heat >= 1.0;
+    }
+
+    /** Cools an inactive cable for several ticks without iterating tick by tick. */
+    public static State coolForTicks(State current, long ticks) {
+        if (ticks <= 0L || current.cold()) {
+            return current;
+        }
+        double cooledHeat = Math.max(0.0,
+                current.heat() - Math.min(ticks, FULL_COOLDOWN_TICKS) / (double) FULL_COOLDOWN_TICKS);
+        return new State(cooledHeat, 0);
     }
 
     /** Advances heat and the independent continuous-overload confirmation gate. */

@@ -55,6 +55,18 @@ public class InstallationToolItem extends Item {
 
         BlockEntity clicked = level.getBlockEntity(pos);
         if (player != null && !player.isShiftKeyDown()
+                && clicked instanceof com.stardustindustry.stardustindustry.machine.port.ItemPortBlockEntity port) {
+            if (level.isClientSide()) {
+                return InteractionResult.SUCCESS;
+            }
+            com.stardustindustry.stardustindustry.machine.port.ItemPortMode mode = port.cycleMode();
+            player.displayClientMessage(Component.translatable(
+                    "message.stardustindustry.item_port.configured",
+                    Component.translatable("item_port_mode.stardustindustry." + mode.id()))
+                    .withStyle(ChatFormatting.GRAY), true);
+            return InteractionResult.CONSUME;
+        }
+        if (player != null && !player.isShiftKeyDown()
                 && clicked instanceof com.stardustindustry.stardustindustry.machine.port.EnergyPortBlockEntity port
                 && port.canConfigureWiring()) {
             if (level.isClientSide()) {

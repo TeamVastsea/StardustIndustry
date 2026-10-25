@@ -39,6 +39,7 @@ public final class TerminalPoseReader {
      * The server-side view of one pose file.
      *
      * @param offset           blocks, plate frame (right / up / out)
+     * @param anchorX/Y/Z      cable attachment point, in the same plate frame
      * @param scale            plain multiplier, 1.0 = as drawn
      * @param originX/Y/Z      pivot, in blocks relative to the OBJ origin
      * @param rotationX/Y/Z    degrees, applied X then Y then Z
@@ -48,6 +49,7 @@ public final class TerminalPoseReader {
      * @param objUnitsPerBlock how many OBJ units make one block (1000 = mm)
      */
     public record Pose(float offsetX, float offsetY, float offsetZ,
+                       float anchorX, float anchorY, float anchorZ,
                        float scale,
                        float originX, float originY, float originZ,
                        float rotationX, float rotationY, float rotationZ,
@@ -56,7 +58,8 @@ public final class TerminalPoseReader {
 
         /** The renderer's fallback when no file exists. */
         public static Pose defaults() {
-            return new Pose(0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 0f, 0f, "", 0f, 1000f);
+            return new Pose(0f, 0f, 0f, 0f, 0f, 0f,
+                    1f, 0f, 0f, 0f, 0f, 0f, 0f, "", 0f, 1000f);
         }
 
         public org.joml.Vector3f offset() {
@@ -65,6 +68,10 @@ public final class TerminalPoseReader {
 
         public org.joml.Vector3f origin() {
             return new org.joml.Vector3f(originX, originY, originZ);
+        }
+
+        public org.joml.Vector3f anchor() {
+            return new org.joml.Vector3f(anchorX, anchorY, anchorZ);
         }
 
         public boolean mirrored() {
@@ -114,6 +121,9 @@ public final class TerminalPoseReader {
                         objectField(root, "offset", "x", 0f),
                         objectField(root, "offset", "y", 0f),
                         objectField(root, "offset", "z", 0f),
+                        objectField(root, "anchor", "x", 0f),
+                        objectField(root, "anchor", "y", 0f),
+                        objectField(root, "anchor", "z", 0f),
                         floatField(root, "scale", 1f),
                         objectField(root, "origin", "x", 0f),
                         objectField(root, "origin", "y", 0f),

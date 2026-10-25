@@ -19,6 +19,7 @@ public final class StorageStationBlockEntity extends MachineBlockEntity {
 
     private final StorageTier stationTier;
     private final JouleStorageModule energy;
+    private StorageMode storageMode = StorageMode.AUTO;
     /** Last successful scan, retained across reload until the first live revalidation. */
     private int validatedCellCount;
 
@@ -48,6 +49,28 @@ public final class StorageStationBlockEntity extends MachineBlockEntity {
         return energy;
     }
 
+    public StorageMode storageMode() {
+        return storageMode;
+    }
+
+    public boolean setStorageMode(StorageMode mode) {
+        StorageMode next = mode == null ? StorageMode.AUTO : mode;
+        if (storageMode == next) {
+            return false;
+        }
+        storageMode = next;
+        setChanged();
+        if (level != null && !level.isClientSide()) {
+            level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
+        }
+        return true;
+    }
+
+    public StorageMode cycleStorageMode() {
+        setStorageMode(storageMode.next());
+        return storageMode;
+    }
+
     public long currentCapacityJoules() {
         if (!isFormed()) {
             return 0L;
@@ -55,6 +78,17 @@ public final class StorageStationBlockEntity extends MachineBlockEntity {
         int evaluatedCells = StorageStationStructureProvider.cellCount(evaluation());
         int cells = evaluatedCells > 0 ? evaluatedCells : validatedCellCount;
         return stationTier.capacityJoulesForCells(cells);
+    }
+
+    /** Maximum charging request at the current state of charge and storage policy. */
+    public long requestedPowerWatts() {
+        if (!storageMode.allowsCharge() || !isFormed()) {
+            return 0L;
+        }
+        long headroom = Math.max(0L, energy.capacityJoules() - energy.storedJoules());
+        return Math.min(energy.maxPowerWatts(),
+                com.stardustindustry.stardustindustry.energy.ElectricalUnits
+                        .wattsFromJoulesPerTick(headroom));
     }
 
     @Override
@@ -106,10 +140,12 @@ public final class StorageStationBlockEntity extends MachineBlockEntity {
     @Override
     protected void saveMachine(CompoundTag tag, HolderLookup.Provider registries) {
         tag.putInt("ValidatedStorageCells", validatedCellCount);
+        tag.putString("StorageMode", storageMode.id());
     }
 
     @Override
     protected void loadMachine(CompoundTag tag, HolderLookup.Provider registries) {
         validatedCellCount = Math.max(0, tag.getInt("ValidatedStorageCells"));
+        storageMode = StorageMode.byId(tag.getString("StorageMode"));
     }
 }

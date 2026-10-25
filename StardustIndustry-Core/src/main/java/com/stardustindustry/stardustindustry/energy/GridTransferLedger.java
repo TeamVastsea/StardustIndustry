@@ -1,11 +1,11 @@
 package com.stardustindustry.stardustindustry.energy;
 
-import java.util.IdentityHashMap;
+import java.util.HashMap;
 import java.util.Map;
 
 /** Enforces per-tick power budgets for ports backed by the same energy account. */
 final class GridTransferLedger {
-    private final Map<Object, Budget> budgets = new IdentityHashMap<>();
+    private final Map<Object, Budget> budgets = new HashMap<>();
 
     long receivableWatts(IElectricalPort port) {
         return available(port, port.requestedPowerWatts(), Direction.RECEIVE);

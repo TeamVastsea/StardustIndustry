@@ -9,10 +9,14 @@ import org.junit.jupiter.api.Test;
 
 import com.stardustindustry.stardustindustry.energy.EnergyTier;
 import com.stardustindustry.stardustindustry.multiblock.BlockRole;
+import com.stardustindustry.stardustindustry.multiblock.PartRole;
+import com.stardustindustry.stardustindustry.multiblock.StructureDefinition;
 import com.stardustindustry.stardustindustry.multiblock.modifier.ModifierSet;
+import com.stardustindustry.stardustindustry.multiblock.provider.FillerKind;
 import com.stardustindustry.stardustindustry.multiblock.provider.StructureEvaluation;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 
 class MachinePortLifecycleTest {
     @Test
@@ -44,5 +48,31 @@ class MachinePortLifecycleTest {
                 Map.of());
 
         assertEquals(Set.of(), MachineBlockEntity.providerPortPositions(current));
+    }
+
+    @Test
+    void legacyDefinitionPortsAreValidatedInWorldSpace() {
+        StructureDefinition definition = StructureDefinition.builder("port_binding_test")
+                .part(0, 0, 0, PartRole.CONTROLLER, state -> true)
+                .part(2, 1, -1, PartRole.PORT_ENERGY, state -> true)
+                .part(0, 1, 1, PartRole.CASING, state -> true)
+                .build();
+        BlockPos controller = new BlockPos(10, 20, 30);
+
+        assertEquals(Set.of(new BlockPos(11, 21, 32)),
+                MachineBlockEntity.definitionPortPositions(controller, Direction.EAST, definition));
+    }
+
+    @Test
+    void installedEvaluationRoundTripsModifiersRolesAndFillers() {
+        BlockPos controller = new BlockPos(12, 34, 56);
+        BlockPos port = controller.east();
+        StructureEvaluation original = StructureEvaluation.formed(
+                EnergyTier.MV,
+                new ModifierSet(2.0f, 2.2f, 1, 1.5f),
+                Map.of(controller, BlockRole.CONTROLLER, port, BlockRole.PORT),
+                Map.of(FillerKind.GRINDING_CORE, 1, FillerKind.BUFFER_CORE, 1));
+
+        assertEquals(original, StructureEvaluation.load(original.save()));
     }
 }

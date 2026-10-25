@@ -284,13 +284,11 @@ public final class TerminalGeometry {
      * Where the anchor offset for a model key comes from.
      *
      * <h2>Why a hook instead of a direct call</h2>
-     * <p>The numbers live in the client's pose files
-     * ({@code TerminalModelConfigs}), but the anchor is needed on the
-     * <b>server</b> too — cable length, reach checks and the click test all run
-     * there while a client's files are irrelevant. So the client installs a
-     * supplier at startup, and a dedicated server simply leaves it unset and gets
-     * the documented default. That keeps {@code energy/} free of client classes,
-     * which is what lets the module be loaded on a server at all.</p>
+     * <p>The client installs a supplier for its reloadable resource-pack poses.
+     * Authoritative server code reads the same JSON through
+     * {@code TerminalPoseReader}; it cannot use this hook because loading a client
+     * class on a dedicated server is invalid. Keeping this hook typed only in
+     * common classes preserves that side boundary.</p>
      */
     private static volatile java.util.function.Function<String, Vector3f> anchorSource;
 
@@ -302,9 +300,8 @@ public final class TerminalGeometry {
     /**
      * The configured anchor offset for a terminal style's model key.
      *
-     * <p>Falls back to {@code (0, 0, 0)} — the model origin — when no source is
-     * installed or the key is unknown, so a server that never loaded the client
-     * still anchors cables in the same place as an unconfigured pose.</p>
+     * <p>Falls back to {@code (0, 0, 0)} — the model origin — when no client source
+     * is installed or the key is unknown.</p>
      */
     public static Vector3f anchorOffsetFor(String modelKey) {
         java.util.function.Function<String, Vector3f> source = anchorSource;

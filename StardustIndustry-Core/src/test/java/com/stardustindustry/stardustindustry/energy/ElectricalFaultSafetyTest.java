@@ -86,6 +86,21 @@ class ElectricalFaultSafetyTest {
                 faults.update(energized, EnergyTier.LV));
     }
 
+    @Test
+    void destructiveFaultConfirmationSurvivesReload() {
+        DestructiveFaultTracker beforeReload = new DestructiveFaultTracker();
+        GridState energized = state(true, true, FaultKind.MISSING_PHASE);
+        for (int tick = 1; tick < DestructiveFaultTracker.CONFIRMATION_TICKS; tick++) {
+            assertNull(beforeReload.update(energized, EnergyTier.LV));
+        }
+
+        DestructiveFaultTracker afterReload = new DestructiveFaultTracker();
+        afterReload.load(beforeReload.save());
+
+        assertEquals(new DestructiveFaultTracker.Confirmation(FaultKind.MISSING_PHASE, 2.0f),
+                afterReload.update(energized, EnergyTier.LV));
+    }
+
     private static void assertFaultConfirmationGate(FaultKind fault) {
         assertTrue(ElectricalFaultPolicy.shouldConfirm(state(true, true, fault), fault));
         assertFalse(ElectricalFaultPolicy.shouldConfirm(state(false, true, fault), fault),

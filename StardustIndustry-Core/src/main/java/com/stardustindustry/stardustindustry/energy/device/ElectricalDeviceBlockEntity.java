@@ -1,7 +1,9 @@
 package com.stardustindustry.stardustindustry.energy.device;
 
 import com.stardustindustry.stardustindustry.energy.DestructiveFaultTracker;
+import com.stardustindustry.stardustindustry.energy.ElectricalAccountKey;
 import com.stardustindustry.stardustindustry.energy.ElectricalPortRole;
+import com.stardustindustry.stardustindustry.energy.ElectricalPortGroupKey;
 import com.stardustindustry.stardustindustry.energy.ElectricalUnits;
 import com.stardustindustry.stardustindustry.energy.EnergyTier;
 import com.stardustindustry.stardustindustry.energy.FaultKind;
@@ -21,6 +23,8 @@ import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.neoforged.neoforge.capabilities.Capabilities;
+import net.neoforged.neoforge.energy.IEnergyStorage;
 
 /** Runtime state shared by generators, transformers, protection and FE converters. */
 public final class ElectricalDeviceBlockEntity extends BlockEntity {
@@ -31,7 +35,14 @@ public final class ElectricalDeviceBlockEntity extends BlockEntity {
     private WiringMode creativeWiring = WiringMode.THREE_PHASE_4_WIRE;
     private WiringMode generatorWiring = WiringMode.SINGLE_PHASE_2_WIRE;
     private long storedJoules;
+    private long passThroughJoules;
+    private long passThroughReceivedJoules;
+    private long preparedPassThroughOutputWatts;
+    private boolean passThroughInputUpdated;
+    private long outputConversionRemainder;
+    private long feInputConversionRemainder;
     private final FuelBurnState fuel = new FuelBurnState();
+    private final GeneratorFuelInventory fuelInventory = new GeneratorFuelInventory(this::changed);
     private final PerTickPowerLimit feTransferLimit = new PerTickPowerLimit();
     private final DestructiveFaultTracker inputFaults = new DestructiveFaultTracker();
     private boolean fuseBlown;
@@ -81,7 +92,76 @@ public final class ElectricalDeviceBlockEntity extends BlockEntity {
     }
 
     public void serverTick() {
-        // Fuel time is consumed by extractJoules only, so an idle closed generator wastes no fuel.
+        if (DeviceEnergyPolicy.isPassThrough(kind())) {
+            // In-line equipment owns no energy store. Its input circuit is solved before its
+            // output circuit, so this balance exists only during the current level tick.
+            passThroughJoules = Math.min(passThroughJoules,
+                    DeviceEnergyPolicy.roundingCarryJoules(kind()));
+            passThroughReceivedJoules = 0L;
+            preparedPassThroughOutputWatts = 0L;
+            passThroughInputUpdated = false;
+        }
+        transferAdjacentFe();
+        // Fuel is converted lazily by Port.extractJoules(). Merely being loaded,
+        // switched off, or connected to an idle grid must not consume an item.
+    }
+
+    /**
+     * Moves FE through the converter's fixed back/top/bottom faces.
+     *
+     * <p>The capability remains available for pipes, but a directly adjacent battery is also
+     * useful without a pipe that happens to push or pull in the required direction. Transfers
+     * still pass through {@link #feStorage(Direction)}, so the nameplate limit and 95% conversion
+     * loss are identical for capability users and direct neighbours.</p>
+     */
+    private void transferAdjacentFe() {
+        if (level == null || level.isClientSide() || !kind().converter() || !switchClosed) {
+            return;
+        }
+        Direction[] feSides = {facing().getOpposite(), Direction.UP, Direction.DOWN};
+        for (Direction feSide : feSides) {
+            BlockPos neighbourPos = worldPosition.relative(feSide);
+            if (!level.hasChunkAt(neighbourPos)) {
+                continue;
+            }
+            IEnergyStorage neighbour = level.getCapability(
+                    Capabilities.EnergyStorage.BLOCK, neighbourPos, feSide.getOpposite());
+            IEnergyStorage converter = feStorage(feSide);
+            if (neighbour == null || converter == null) {
+                continue;
+            }
+            if (feToNative) {
+                pullFe(neighbour, converter);
+            } else {
+                pushFe(converter, neighbour);
+            }
+        }
+    }
+
+    private static void pullFe(IEnergyStorage source, IEnergyStorage destination) {
+        int capacity = destination.receiveEnergy(Integer.MAX_VALUE, true);
+        int transferable = source.extractEnergy(capacity, true);
+        if (transferable <= 0) {
+            return;
+        }
+        int extracted = source.extractEnergy(transferable, false);
+        int accepted = destination.receiveEnergy(extracted, false);
+        if (accepted < extracted) {
+            source.receiveEnergy(extracted - accepted, false);
+        }
+    }
+
+    private static void pushFe(IEnergyStorage source, IEnergyStorage destination) {
+        int available = source.extractEnergy(Integer.MAX_VALUE, true);
+        int transferable = destination.receiveEnergy(available, true);
+        if (transferable <= 0) {
+            return;
+        }
+        int extracted = source.extractEnergy(transferable, false);
+        int accepted = destination.receiveEnergy(extracted, false);
+        if (accepted < extracted) {
+            source.receiveEnergy(extracted - accepted, false);
+        }
     }
 
     public void toggleSwitch() {
@@ -93,7 +173,26 @@ public final class ElectricalDeviceBlockEntity extends BlockEntity {
 
     public void setSwitchClosed(boolean closed) {
         switchClosed = closed && !(fuseBlown && kind().fuseBox());
+        if (!switchClosed) {
+            clearPassThroughEnergy();
+        }
         syncSwitchState();
+    }
+
+    /** Installs one correctly rated replacement link and leaves the box open for a deliberate reset. */
+    public boolean replaceFuse(EnergyTier replacementTier) {
+        ElectricalDeviceKind deviceKind = kind();
+        if (!deviceKind.fuseBox() || !fuseBlown || replacementTier != deviceKind.lowTier()) {
+            return false;
+        }
+        fuseBlown = false;
+        switchClosed = false;
+        inputFaults.reset();
+        inputState = GridState.offline(inputPort.wiring(), FaultKind.OPEN_SWITCH, false);
+        outputState = GridState.offline(sourcePort.wiring(), FaultKind.OPEN_SWITCH, false);
+        syncSwitchState();
+        changed();
+        return true;
     }
 
     public void cycleCreativeTier() {
@@ -123,8 +222,6 @@ public final class ElectricalDeviceBlockEntity extends BlockEntity {
                 case THREE_PHASE_3_WIRE -> WiringMode.THREE_PHASE_4_WIRE;
                 case THREE_PHASE_4_WIRE -> WiringMode.SINGLE_PHASE_2_WIRE;
             };
-        } else if (kind.fuseBox()) {
-            fuseBlown = false;
         }
         configurationChanged();
     }
@@ -133,8 +230,72 @@ public final class ElectricalDeviceBlockEntity extends BlockEntity {
         if (kind() != ElectricalDeviceKind.FUEL_GENERATOR || ticks <= 0) {
             return false;
         }
-        fuel.addTicks(ticks);
+        fuel.addBurnTicks(ticks, kind().ratedPowerWatts());
         changed();
+        return true;
+    }
+
+    public net.neoforged.neoforge.items.IItemHandler fuelItemHandler() {
+        return kind() == ElectricalDeviceKind.FUEL_GENERATOR ? fuelInventory.capability() : null;
+    }
+
+    /** Full two-slot view used only by the server-created generator menu. */
+    public net.neoforged.neoforge.items.IItemHandler generatorMenuHandler() {
+        return kind() == ElectricalDeviceKind.FUEL_GENERATOR ? fuelInventory.menuHandler() : null;
+    }
+
+    /** Best live grid state for the device's front-panel readout. */
+    public GridState telemetryState() {
+        ElectricalDeviceKind deviceKind = kind();
+        if (deviceKind.source() || deviceKind.converter() && feToNative) {
+            return outputState;
+        }
+        if (deviceKind.converter()) {
+            return inputState;
+        }
+        if (outputState.energized() || outputState.deliveredPowerWatts() > 0L
+                || outputState.fault() != FaultKind.OPEN_SWITCH) {
+            return outputState;
+        }
+        return inputState;
+    }
+
+    public long telemetryStoredJoules() {
+        if (kind() == ElectricalDeviceKind.FUEL_GENERATOR) {
+            return fuel.storedJoules();
+        }
+        return DeviceEnergyPolicy.persistentCapacity(kind()) > 0L ? storedJoules : 0L;
+    }
+
+    public long telemetryCapacityJoules() {
+        return DeviceEnergyPolicy.persistentCapacity(kind());
+    }
+
+    public long telemetryRequestedPowerWatts() {
+        ElectricalDeviceKind deviceKind = kind();
+        if (deviceKind.source() || deviceKind.converter() && feToNative) {
+            return 0L;
+        }
+        return inputPort.requestedPowerWatts();
+    }
+
+    public String telemetryModeId() {
+        ElectricalDeviceKind deviceKind = kind();
+        if (deviceKind.transformer()) return stepUp ? "step_up" : "step_down";
+        if (deviceKind.converter()) return feToNative ? "fe_to_native" : "native_to_fe";
+        if (deviceKind.fuseBox() && fuseBlown) return "fuse_blown";
+        return switchClosed ? "closed" : "open";
+    }
+
+    public boolean insertFuelItem(net.minecraft.world.item.ItemStack stack) {
+        if (kind() != ElectricalDeviceKind.FUEL_GENERATOR || stack.isEmpty()) {
+            return false;
+        }
+        net.minecraft.world.item.ItemStack one = stack.copyWithCount(1);
+        if (!fuelInventory.capability().insertItem(GeneratorFuelInventory.FUEL_SLOT, one, true).isEmpty()) {
+            return false;
+        }
+        fuelInventory.capability().insertItem(GeneratorFuelInventory.FUEL_SLOT, one, false);
         return true;
     }
 
@@ -182,7 +343,7 @@ public final class ElectricalDeviceBlockEntity extends BlockEntity {
     }
 
     private long bufferCapacity() {
-        return Math.max(1L, kind().ratedPowerWatts() * 2L);
+        return DeviceEnergyPolicy.persistentCapacity(kind());
     }
 
     private long receive(long joules, boolean simulate) {
@@ -195,15 +356,72 @@ public final class ElectricalDeviceBlockEntity extends BlockEntity {
     }
 
     private long extract(long joules, boolean simulate, double efficiency) {
-        long inputNeeded = EnergyConversion.inputForOutput(joules, efficiency);
-        if (inputNeeded > storedJoules) {
+        long available = EnergyConversion.convertInput(storedJoules, efficiency,
+                outputConversionRemainder).amount();
+        if (joules <= 0L || joules > available) {
             return 0L;
         }
-        if (!simulate && inputNeeded > 0L) {
-            storedJoules -= inputNeeded;
+        EnergyConversion.Result consumption = EnergyConversion.consumeInputForOutput(
+                joules, efficiency, outputConversionRemainder);
+        if (consumption.amount() > storedJoules) {
+            return 0L;
+        }
+        if (!simulate) {
+            storedJoules -= consumption.amount();
+            outputConversionRemainder = consumption.remainder();
             changed();
         }
         return joules;
+    }
+
+    private void clearPassThroughEnergy() {
+        passThroughJoules = 0L;
+        passThroughReceivedJoules = 0L;
+        preparedPassThroughOutputWatts = 0L;
+        passThroughInputUpdated = false;
+    }
+
+    private long receivePassThrough(long joules, boolean simulate) {
+        long capacity = DeviceEnergyPolicy.passThroughJoulesPerTick(kind());
+        long accepted = Math.min(Math.max(0L, joules),
+                Math.max(0L, capacity - passThroughReceivedJoules));
+        if (!simulate && accepted > 0L) {
+            passThroughJoules += accepted;
+            passThroughReceivedJoules += accepted;
+        }
+        return accepted;
+    }
+
+    private long extractPassThrough(long joules, boolean simulate) {
+        double efficiency = kind().nativeOutputEfficiency(feToNative);
+        long available = EnergyConversion.convertInput(passThroughJoules, efficiency,
+                outputConversionRemainder).amount();
+        if (joules <= 0L) {
+            return 0L;
+        }
+        if (joules > available) {
+            return 0L;
+        }
+        EnergyConversion.Result consumption = EnergyConversion.consumeInputForOutput(
+                joules, efficiency, outputConversionRemainder);
+        if (consumption.amount() > passThroughJoules) {
+            return 0L;
+        }
+        if (!simulate) {
+            passThroughJoules -= consumption.amount();
+            outputConversionRemainder = consumption.remainder();
+        }
+        return joules;
+    }
+
+    private boolean hasLivePassThroughInput() {
+        if (!passThroughInputUpdated || !inputState.energized()
+                || !inputState.sourceSwitchClosed()) {
+            return false;
+        }
+        return inputState.fault() == FaultKind.NONE
+                || inputState.fault() == FaultKind.UNDERVOLTAGE
+                || inputState.fault() == FaultKind.OVERCURRENT;
     }
 
     private void syncSwitchState() {
@@ -235,8 +453,9 @@ public final class ElectricalDeviceBlockEntity extends BlockEntity {
         changed();
     }
 
-    public net.neoforged.neoforge.energy.IEnergyStorage feStorage() {
-        if (!kind().converter()) {
+    public net.neoforged.neoforge.energy.IEnergyStorage feStorage(Direction side) {
+        boolean feSide = side == facing().getOpposite() || side == Direction.UP || side == Direction.DOWN;
+        if (!kind().converter() || !feSide) {
             return null;
         }
         return new net.neoforged.neoforge.energy.IEnergyStorage() {
@@ -245,11 +464,18 @@ public final class ElectricalDeviceBlockEntity extends BlockEntity {
                 if (!feToNative || !switchClosed) return 0;
                 long gameTick = level == null ? 0L : level.getGameTime();
                 int limited = feTransferLimit.limit(amount, kind().ratedPowerWatts(), gameTick);
-                long converted = EnergyConversion.outputForInput(limited, kind().efficiency());
-                long acceptedJoules = receive(converted, simulate);
+                long freeJoules = Math.max(0L, bufferCapacity() - storedJoules);
                 int acceptedFe = (int) Math.min(limited,
-                        EnergyConversion.inputForOutput(acceptedJoules, kind().efficiency()));
-                if (!simulate) feTransferLimit.record(acceptedFe, gameTick);
+                        EnergyConversion.maxInputForOutputCapacity(freeJoules,
+                                kind().efficiency(), feInputConversionRemainder));
+                EnergyConversion.Result conversion = EnergyConversion.convertInput(
+                        acceptedFe, kind().efficiency(), feInputConversionRemainder);
+                if (!simulate && acceptedFe > 0) {
+                    storedJoules += conversion.amount();
+                    feInputConversionRemainder = conversion.remainder();
+                    feTransferLimit.record(acceptedFe, gameTick);
+                    changed();
+                }
                 return acceptedFe;
             }
 
@@ -258,11 +484,14 @@ public final class ElectricalDeviceBlockEntity extends BlockEntity {
                 if (feToNative || !switchClosed) return 0;
                 long gameTick = level == null ? 0L : level.getGameTime();
                 int limited = feTransferLimit.limit(amount, kind().ratedPowerWatts(), gameTick);
-                long maxFe = EnergyConversion.outputForInput(storedJoules, kind().efficiency());
+                long maxFe = EnergyConversion.convertInput(storedJoules, kind().efficiency(),
+                        outputConversionRemainder).amount();
                 int extracted = (int) Math.min(limited, Math.min(Integer.MAX_VALUE, maxFe));
-                long usedJoules = EnergyConversion.inputForOutput(extracted, kind().efficiency());
-                if (!simulate) {
-                    storedJoules -= Math.min(storedJoules, usedJoules);
+                EnergyConversion.Result consumption = EnergyConversion.consumeInputForOutput(
+                        extracted, kind().efficiency(), outputConversionRemainder);
+                if (!simulate && extracted > 0) {
+                    storedJoules -= consumption.amount();
+                    outputConversionRemainder = consumption.remainder();
                     feTransferLimit.record(extracted, gameTick);
                     changed();
                 }
@@ -301,18 +530,36 @@ public final class ElectricalDeviceBlockEntity extends BlockEntity {
 
         @Override public ElectricalPortRole electricalRole() { return output ? ElectricalPortRole.SOURCE : ElectricalPortRole.LOAD; }
         @Override public boolean enabled() { return switchClosed && !(fuseBlown && kind().fuseBox()); }
-        @Override public long maxPowerWatts() { return kind().ratedPowerWatts(); }
-        @Override public Object energyAccount() { return ElectricalDeviceBlockEntity.this; }
+        @Override
+        public long maxPowerWatts() {
+            return ProtectionModel.maximumThroughputWatts(kind());
+        }
+        @Override public Object energyAccount() {
+            return new ElectricalAccountKey(worldPosition, "device");
+        }
+        @Override public Object portGroup() {
+            return new ElectricalPortGroupKey(worldPosition, output ? "output" : "input");
+        }
         @Override public boolean allowsSameTickPassThrough() {
             return kind().transformer() || kind().protection();
         }
+        @Override
+        public void preparePassThroughDemandWatts(long outputWatts) {
+            if (output && DeviceEnergyPolicy.isPassThrough(kind())) {
+                preparedPassThroughOutputWatts = Math.max(0L, outputWatts);
+            }
+        }
         @Override public long overcurrentTripWatts() {
-            return kind().protection() ? kind().ratedPowerWatts() : 0L;
+            return output && kind().protection() ? kind().ratedPowerWatts() : 0L;
         }
 
         @Override
         public long requestedPowerWatts() {
             if (output || !enabled()) return 0L;
+            if (DeviceEnergyPolicy.isPassThrough(kind())) {
+                return DeviceEnergyPolicy.inputPowerForOutput(
+                        kind(), preparedPassThroughOutputWatts);
+            }
             return Math.min(maxPowerWatts(), Math.max(0L, bufferCapacity() - storedJoules)
                     * ElectricalUnits.TICKS_PER_SECOND);
         }
@@ -321,17 +568,37 @@ public final class ElectricalDeviceBlockEntity extends BlockEntity {
         public long availablePowerWatts() {
             if (!output || !enabled()) return 0L;
             if (kind().source()) {
-                return kind() == ElectricalDeviceKind.CREATIVE_SOURCE || fuel.hasFuel()
-                        ? maxPowerWatts() : 0L;
+                return kind() == ElectricalDeviceKind.CREATIVE_SOURCE
+                        ? maxPowerWatts()
+                        : fuel.hasFuel()
+                                ? Math.min(maxPowerWatts(),
+                                        ElectricalUnits.wattsFromJoulesPerTick(fuel.storedJoules()))
+                                : fuelInventory.canRefill() ? maxPowerWatts() : 0L;
             }
-            long outputJoules = EnergyConversion.outputForInput(storedJoules,
-                    kind().nativeOutputEfficiency(feToNative));
+            if (DeviceEnergyPolicy.isPassThrough(kind())) {
+                if (!hasLivePassThroughInput()) {
+                    return 0L;
+                }
+                long bufferedOutput = ElectricalUnits.wattsFromJoulesPerTick(
+                        EnergyConversion.convertInput(passThroughJoules,
+                                kind().nativeOutputEfficiency(feToNative),
+                                outputConversionRemainder).amount());
+                // An energized transformer or closed protection device still establishes
+                // no-load voltage with zero whole joules buffered. Any positive extraction
+                // remains fail-closed, so advertised capacity cannot create energy.
+                return bufferedOutput > 0L ? Math.min(maxPowerWatts(), bufferedOutput)
+                        : DeviceEnergyPolicy.maxPassThroughOutputWatts(kind());
+            }
+            long outputJoules = EnergyConversion.convertInput(storedJoules,
+                    kind().nativeOutputEfficiency(feToNative), outputConversionRemainder).amount();
             return Math.min(maxPowerWatts(), ElectricalUnits.wattsFromJoulesPerTick(outputJoules));
         }
 
         @Override
         public long receiveJoules(long amount, boolean simulate) {
-            return output ? 0L : receive(amount, simulate);
+            if (output) return 0L;
+            return DeviceEnergyPolicy.isPassThrough(kind())
+                    ? receivePassThrough(amount, simulate) : receive(amount, simulate);
         }
 
         @Override
@@ -339,10 +606,20 @@ public final class ElectricalDeviceBlockEntity extends BlockEntity {
             if (!output || amount <= 0L) return 0L;
             if (kind() == ElectricalDeviceKind.CREATIVE_SOURCE) return amount;
             if (kind() == ElectricalDeviceKind.FUEL_GENERATOR) {
-                Long gameTick = level == null ? null : level.getGameTime();
-                if (!fuel.extract(simulate, gameTick)) return 0L;
-                if (!simulate) changed();
-                return amount;
+                if (!fuel.hasFuel()) {
+                    if (simulate) {
+                        return fuelInventory.canRefill() ? amount : 0L;
+                    }
+                    if (!fuelInventory.refill(fuel, kind().ratedPowerWatts())) {
+                        return 0L;
+                    }
+                }
+                long extracted = fuel.extractJoules(amount, simulate);
+                if (!simulate && extracted > 0L) changed();
+                return extracted;
+            }
+            if (DeviceEnergyPolicy.isPassThrough(kind())) {
+                return extractPassThrough(amount, simulate);
             }
             return extract(amount, simulate, kind().nativeOutputEfficiency(feToNative));
         }
@@ -350,12 +627,23 @@ public final class ElectricalDeviceBlockEntity extends BlockEntity {
         @Override
         public void updateGridState(GridState state) {
             if (output) outputState = state; else inputState = state;
-            if (switchClosed && ProtectionModel.shouldTrip(kind(), state)) {
+            if (!output && DeviceEnergyPolicy.isPassThrough(kind())) {
+                passThroughInputUpdated = true;
+            }
+            FaultKind fault = state.fault();
+            boolean inputSafetyFault = !output && kind().breaker()
+                    && (fault == FaultKind.OVERVOLTAGE || fault == FaultKind.MISSING_PHASE);
+            if (switchClosed && (output && ProtectionModel.shouldTrip(kind(), state)
+                    || inputSafetyFault)) {
                 tripProtection();
                 return;
             }
             if (!output) {
                 DestructiveFaultTracker.Confirmation confirmed = inputFaults.update(state, tier());
+                // The confirmation window is persistent safety state. Grid-state
+                // updates normally do not alter inventory or switch state, so no
+                // other path would mark this block entity for saving as it advances.
+                setChanged();
                 if (confirmed != null) {
                     failDevice(confirmed.explosionStrength());
                 }
@@ -385,9 +673,25 @@ public final class ElectricalDeviceBlockEntity extends BlockEntity {
         if (level == null || level.isClientSide()) {
             return;
         }
-        level.destroyBlock(worldPosition, true);
         level.explode(null, worldPosition.getX() + 0.5, worldPosition.getY() + 0.5,
                 worldPosition.getZ() + 0.5, strength, false, Level.ExplosionInteraction.NONE);
+        // Remove after the blast so the inventory drops are not spawned inside
+        // the very explosion that caused the device failure.
+        level.destroyBlock(worldPosition, true);
+    }
+
+    /** Drops the generator's unconsumed fuel and empty containers exactly once. */
+    void dropFuelInventory() {
+        if (level == null || level.isClientSide()) {
+            return;
+        }
+        for (net.minecraft.world.item.ItemStack stack : fuelInventory.drain()) {
+            net.minecraft.world.Containers.dropItemStack(level,
+                    worldPosition.getX() + 0.5,
+                    worldPosition.getY() + 0.5,
+                    worldPosition.getZ() + 0.5,
+                    stack);
+        }
     }
 
     @Override
@@ -399,10 +703,14 @@ public final class ElectricalDeviceBlockEntity extends BlockEntity {
         tag.putString("CreativeTier", creativeTier.getSerializedName());
         tag.putString("CreativeWiring", creativeWiring.id());
         tag.putString("GeneratorWiring", generatorWiring.id());
-        tag.putLong("StoredJoules", storedJoules);
-        tag.putInt("QueuedFuelTicks", fuel.queuedTicks());
-        tag.putInt("BurningFuelTicks", fuel.burningTicks());
+        tag.putLong("StoredJoules", DeviceEnergyPolicy.persistentCapacity(kind()) > 0L
+                ? storedJoules : 0L);
+        tag.putLong("OutputConversionRemainder", outputConversionRemainder);
+        tag.putLong("FeInputConversionRemainder", feInputConversionRemainder);
+        tag.put("FuelEnergy", fuel.save());
+        tag.put("FuelInventory", fuelInventory.save(registries));
         tag.putBoolean("FuseBlown", fuseBlown);
+        tag.put("InputFaults", inputFaults.save());
     }
 
     @Override
@@ -416,14 +724,80 @@ public final class ElectricalDeviceBlockEntity extends BlockEntity {
         }
         creativeWiring = WiringMode.byId(tag.getString("CreativeWiring"));
         generatorWiring = WiringMode.byId(tag.getString("GeneratorWiring"));
-        storedJoules = Math.max(0L, tag.getLong("StoredJoules"));
-        fuel.load(tag.getInt("QueuedFuelTicks"), tag.getInt("BurningFuelTicks"));
+        storedJoules = DeviceEnergyPolicy.persistentCapacity(kind()) > 0L
+                ? Math.min(DeviceEnergyPolicy.persistentCapacity(kind()),
+                        Math.max(0L, tag.getLong("StoredJoules")))
+                : 0L;
+        clearPassThroughEnergy();
+        outputConversionRemainder = EnergyConversion.normalizeRemainder(
+                tag.getLong("OutputConversionRemainder"), kind().efficiency());
+        feInputConversionRemainder = EnergyConversion.normalizeRemainder(
+                tag.getLong("FeInputConversionRemainder"), kind().efficiency());
+        if (tag.contains("FuelEnergy")) {
+            fuel.load(tag.getCompound("FuelEnergy"), kind().ratedPowerWatts());
+        } else {
+            fuel.load(tag.getInt("QueuedFuelTicks"), tag.getInt("BurningFuelTicks"));
+        }
+        if (tag.contains("FuelInventory")) {
+            fuelInventory.load(tag.getCompound("FuelInventory"), registries);
+        }
         fuseBlown = tag.getBoolean("FuseBlown");
-        inputFaults.reset();
+        inputFaults.load(tag.getCompound("InputFaults"));
         inputState = GridState.offline(inputPort.wiring(), FaultKind.OPEN_SWITCH, false);
         outputState = GridState.offline(sourcePort.wiring(), FaultKind.OPEN_SWITCH, false);
     }
 
     @Override public CompoundTag getUpdateTag(HolderLookup.Provider registries) { return saveWithoutMetadata(registries); }
     @Override public Packet<ClientGamePacketListener> getUpdatePacket() { return ClientboundBlockEntityDataPacket.create(this); }
+}
+
+/** Energy ownership rules kept separate from the block entity's UI and fault state. */
+final class DeviceEnergyPolicy {
+    private DeviceEnergyPolicy() {}
+
+    static boolean isPassThrough(ElectricalDeviceKind kind) {
+        return kind.transformer() || kind.protection();
+    }
+
+    static long persistentCapacity(ElectricalDeviceKind kind) {
+        return kind.converter() ? saturatingMultiply(kind.ratedPowerWatts(), 2L) : 0L;
+    }
+
+    static long passThroughJoulesPerTick(ElectricalDeviceKind kind) {
+        if (!isPassThrough(kind)) return 0L;
+        return saturatingAdd(passThroughLimitWatts(kind), ElectricalUnits.TICKS_PER_SECOND - 1L)
+                / ElectricalUnits.TICKS_PER_SECOND;
+    }
+
+    static long roundingCarryJoules(ElectricalDeviceKind kind) {
+        return isPassThrough(kind) && kind.nativeOutputEfficiency(true) < 1.0 ? 1L : 0L;
+    }
+
+    static long inputPowerForOutput(ElectricalDeviceKind kind, long outputWatts) {
+        if (!isPassThrough(kind) || outputWatts <= 0L) return 0L;
+        return Math.min(passThroughLimitWatts(kind), EnergyConversion.inputForOutput(
+                outputWatts, kind.nativeOutputEfficiency(true)));
+    }
+
+    static long maxPassThroughOutputWatts(ElectricalDeviceKind kind) {
+        if (!isPassThrough(kind)) return 0L;
+        long limitWatts = passThroughLimitWatts(kind);
+        return Math.min(limitWatts, EnergyConversion.outputForInput(
+                limitWatts, kind.nativeOutputEfficiency(true)));
+    }
+
+    private static long passThroughLimitWatts(ElectricalDeviceKind kind) {
+        return ProtectionModel.maximumThroughputWatts(kind);
+    }
+
+    static long saturatingAdd(long first, long second) {
+        long safeFirst = Math.max(0L, first);
+        long safeSecond = Math.max(0L, second);
+        return safeSecond > Long.MAX_VALUE - safeFirst ? Long.MAX_VALUE : safeFirst + safeSecond;
+    }
+
+    private static long saturatingMultiply(long value, long multiplier) {
+        if (value <= 0L || multiplier <= 0L) return 0L;
+        return value > Long.MAX_VALUE / multiplier ? Long.MAX_VALUE : value * multiplier;
+    }
 }

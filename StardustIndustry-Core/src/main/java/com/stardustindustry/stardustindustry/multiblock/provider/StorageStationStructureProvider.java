@@ -12,6 +12,8 @@ import com.stardustindustry.stardustindustry.machine.MachinePortBlock;
 import com.stardustindustry.stardustindustry.machine.storage.StorageCellBlock;
 import com.stardustindustry.stardustindustry.machine.storage.StorageStationControllerBlock;
 import com.stardustindustry.stardustindustry.machine.storage.StorageTier;
+import com.stardustindustry.stardustindustry.energy.TerminalGrid;
+import com.stardustindustry.stardustindustry.energy.WiringMode;
 import com.stardustindustry.stardustindustry.multiblock.BlockRole;
 import com.stardustindustry.stardustindustry.multiblock.MultiblockMembershipRegistry;
 import com.stardustindustry.stardustindustry.multiblock.PartRole;
@@ -162,9 +164,10 @@ public final class StorageStationStructureProvider implements StructureProvider 
             failures.add(new ScanFailure(controller, BlockRole.FILLER,
                     "structure.stardustindustry.need.storage_cell"));
         }
-        if (!hasMatchingEnergyPort(roles)) {
+        if (!hasSufficientEnergyPorts(roles, stationTier)) {
             failures.add(new ScanFailure(controller, BlockRole.PORT,
-                    "structure.stardustindustry.need.storage_port"));
+                    "structure.stardustindustry.need.storage_port",
+                    requiredEnergyPortCount(stationTier)));
         }
 
         if (!failures.isEmpty()) {
@@ -255,8 +258,28 @@ public final class StorageStationStructureProvider implements StructureProvider 
                 && port.tier() != null;
     }
 
-    static boolean hasMatchingEnergyPort(Map<BlockPos, BlockRole> roles) {
-        return roles.containsValue(BlockRole.PORT);
+    static boolean hasSufficientEnergyPorts(Map<BlockPos, BlockRole> roles, StorageTier tier) {
+        if (tier == null) {
+            return false;
+        }
+        long matchingPorts = roles.values().stream()
+                .filter(role -> role == BlockRole.PORT)
+                .count();
+        return matchingPorts >= requiredEnergyPortCount(tier);
+    }
+
+    /**
+     * One port face can host one terminal rack. LV/MV racks carry several conductors, while an
+     * HV/EHV rack is a single post, so a balanced three-phase interface needs three port faces.
+     */
+    static int requiredEnergyPortCount(StorageTier tier) {
+        if (tier == null) {
+            return Integer.MAX_VALUE;
+        }
+        WiringMode wiring = tier == StorageTier.LV
+                ? WiringMode.THREE_PHASE_4_WIRE : WiringMode.THREE_PHASE_3_WIRE;
+        int conductorsPerPort = TerminalGrid.of(tier.energyTier()).cellCount();
+        return (wiring.requiredConductors() + conductorsPerPort - 1) / conductorsPerPort;
     }
 
     private static StorageTier controllerTier(BlockState state) {

@@ -39,8 +39,10 @@ public enum StorageTier {
     }
 
     public long nominalPowerWatts() {
-        return com.stardustindustry.stardustindustry.energy.ElectricalUnits.powerWatts(
-                energyTier.volts(), amperage);
+        com.stardustindustry.stardustindustry.energy.WiringMode wiring = energyTier == EnergyTier.LV
+                ? com.stardustindustry.stardustindustry.energy.WiringMode.THREE_PHASE_4_WIRE
+                : com.stardustindustry.stardustindustry.energy.WiringMode.THREE_PHASE_3_WIRE;
+        return wiring.powerWatts(amperage, energyTier);
     }
 
     /** Saturating capacity arithmetic protects worlds if size rules change later. */

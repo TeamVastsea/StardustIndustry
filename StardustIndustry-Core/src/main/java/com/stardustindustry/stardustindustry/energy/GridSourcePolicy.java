@@ -10,7 +10,6 @@ final class GridSourcePolicy {
         List<IElectricalPort> dedicated = ports.stream()
                 .filter(port -> port.electricalRole() == ElectricalPortRole.SOURCE)
                 .filter(IElectricalPort::enabled)
-                .filter(port -> port.availablePowerWatts() > 0L)
                 .toList();
         if (dedicated.size() > 1) {
             return new Selection(Kind.CONFLICT, null);

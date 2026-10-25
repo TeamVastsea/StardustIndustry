@@ -13,6 +13,7 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.BlockGetter;
@@ -340,6 +341,24 @@ public class TerminalMountBlock extends Block implements EntityBlock {
             return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
         }
 
+        // A meter click inspects the aimed cable, or the rack when no cable was
+        // hit. Handle it before the occupied-terminal cable-pull gesture.
+        if (stack.getItem() instanceof com.stardustindustry.stardustindustry.energy.ElectriciansMeterItem) {
+            com.stardustindustry.stardustindustry.energy.ElectriciansMeterItem
+                    .requestTerminalDiagnostic(pos, mount);
+            return ItemInteractionResult.SUCCESS;
+        }
+
+        // Minecraft asks the empty main hand before the offhand. Let an offhand
+        // meter receive its own click instead of treating this empty stack as the
+        // cable-cut gesture below.
+        if (hand == InteractionHand.MAIN_HAND
+                && com.stardustindustry.stardustindustry.energy.ElectriciansMeterItem
+                        .offhandMeterOwnsEmptyMainHand(
+                                player.getMainHandItem(), player.getOffhandItem())) {
+            return ItemInteractionResult.SKIP_DEFAULT_BLOCK_INTERACTION;
+        }
+
         // Cables are cut and painted before anything else: they have no collision
         // box, so the ray has to be tested against the wire itself, and a click
         // that lands on a wire must not be read as "place a terminal here".
@@ -460,6 +479,18 @@ public class TerminalMountBlock extends Block implements EntityBlock {
             mount.disconnectAllCables();
         }
         return drops;
+    }
+
+    @Override
+    protected void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState,
+                            boolean movedByPiston) {
+        if (!state.is(newState.getBlock()) && !level.isClientSide()) {
+            // Normal mining already returned cable items through getDrops. This is
+            // the no-drop fallback for commands, replacement and other removal
+            // paths: mutate the authoritative store, but never create extra drops.
+            com.stardustindustry.stardustindustry.energy.CableService.disconnectAll(level, pos);
+        }
+        super.onRemove(state, level, pos, newState, movedByPiston);
     }
 
     /**
@@ -588,6 +619,26 @@ public class TerminalMountBlock extends Block implements EntityBlock {
         // sixteenth walk-through.
         return Shapes.box(
                 box[0], box[1], box[2], box[3], box[4], box[5]);
+    }
+
+    /** Block item for an empty rack, with the tier and grid size visible in survival. */
+    public static final class MountItem extends BlockItem {
+        private final EnergyTier tier;
+
+        public MountItem(TerminalMountBlock block, Properties properties) {
+            super(block, properties);
+            this.tier = block.tier();
+        }
+
+        @Override
+        public void appendHoverText(ItemStack stack, TooltipContext context,
+                                    List<Component> tooltip, TooltipFlag flag) {
+            TerminalGrid grid = TerminalGrid.of(tier);
+            tooltip.add(Component.translatable("item.stardustindustry.terminal_mount.tip",
+                            Component.translatable("tier." + tier.translationKey()),
+                            grid.columns(), grid.rows())
+                    .withStyle(ChatFormatting.GRAY));
+        }
     }
 
     /**

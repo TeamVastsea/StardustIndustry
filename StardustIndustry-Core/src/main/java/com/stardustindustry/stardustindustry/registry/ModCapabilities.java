@@ -55,7 +55,7 @@ public final class ModCapabilities {
         event.registerBlock(Capabilities.EnergyStorage.BLOCK,
                 (level, pos, state, blockEntity, side) ->
                         blockEntity instanceof com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceBlockEntity device
-                                ? device.feStorage() : null,
+                                ? device.feStorage(side) : null,
                 ModBlocks.LV_FE_CONVERTER.get(), ModBlocks.MV_FE_CONVERTER.get(),
                 ModBlocks.HV_FE_CONVERTER.get(), ModBlocks.EHV_FE_CONVERTER.get());
 
@@ -76,6 +76,14 @@ public final class ModCapabilities {
         event.registerBlock(Capabilities.ItemHandler.BLOCK,
                 (level, pos, state, blockEntity, side) -> itemHandler(blockEntity),
                 ModBlocks.LV_ITEM_PORT.get());
+
+        // Generator automation is deliberately fuel-only: slot 0 accepts fuels
+        // and slot 1 exposes empty containers for extraction.
+        event.registerBlock(Capabilities.ItemHandler.BLOCK,
+                (level, pos, state, blockEntity, side) ->
+                        blockEntity instanceof com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceBlockEntity device
+                                ? device.fuelItemHandler() : null,
+                ModBlocks.FUEL_GENERATOR.get());
 
         // NOTE: tank shells deliberately expose NO capability of their own. A tank
         // is filled and emptied through its ports only, so a pipe cannot clip onto
@@ -143,7 +151,11 @@ public final class ModCapabilities {
             return null;
         }
         ItemInventoryModule inventory = controller.modules().get(ItemInventoryModule.class);
-        return inventory != null ? inventory.capability() : null;
+        com.stardustindustry.stardustindustry.machine.port.ItemPortMode mode =
+                blockEntity instanceof com.stardustindustry.stardustindustry.machine.port.ItemPortBlockEntity port
+                        ? port.mode()
+                        : com.stardustindustry.stardustindustry.machine.port.ItemPortMode.BOTH;
+        return inventory != null ? inventory.capability(mode) : null;
     }
 
     private static IFluidHandler fluidHandler(Object blockEntity, int rateLimit) {

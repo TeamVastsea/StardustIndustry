@@ -58,8 +58,44 @@ public class MachinePortBlockEntity extends BlockEntity {
         if (controllerPos == null || level == null) {
             return null;
         }
-        return level.getBlockEntity(controllerPos) instanceof MachineBlockEntity machine && !machine.isRemoved()
-                ? machine : null;
+        // BlockEntity#getBlockEntity ultimately asks for the chunk. Guard it so a
+        // loaded port never becomes an implicit chunk loader for its controller.
+        // The NBT binding is deliberately retained until that chunk returns and
+        // can be validated authoritatively.
+        if (!level.isLoaded(controllerPos)) {
+            return null;
+        }
+        BlockEntity controllerEntity = level.getBlockEntity(controllerPos);
+        if (controllerEntity instanceof MachineBlockEntity machine && !machine.isRemoved()) {
+            if (level.isClientSide()) {
+                return machine;
+            }
+            if (machine.rememberBoundPort(worldPosition)) {
+                return machine;
+            }
+            clearOrphanBinding();
+            return null;
+        }
+        // During chunk loading the controller block can exist just before its BE
+        // is attached. Only clear immediately when the loaded block cannot ever
+        // host a controller; otherwise onLoad gets another chance to validate it.
+        if (!level.isClientSide()) {
+            // A null entity can be transient while a BE-hosting block loads. A
+            // live entity of the wrong type can never become this port's owner.
+            if (controllerEntity != null || !level.getBlockState(controllerPos).hasBlockEntity()) {
+                clearOrphanBinding();
+            }
+        }
+        return null;
+    }
+
+    private void clearOrphanBinding() {
+        if (controllerPos == null) {
+            return;
+        }
+        controllerPos = null;
+        invalidatePortCapabilities();
+        setChanged();
     }
 
     /** Called by the controller when the structure forms. */
@@ -75,12 +111,7 @@ public class MachinePortBlockEntity extends BlockEntity {
 
     /** Called by the controller when the structure breaks, or before re-binding. */
     public void unbind() {
-        if (controllerPos == null) {
-            return;
-        }
-        this.controllerPos = null;
-        invalidatePortCapabilities();
-        setChanged();
+        clearOrphanBinding();
     }
 
     /** Refreshes capability consumers after binding or port configuration changes. */

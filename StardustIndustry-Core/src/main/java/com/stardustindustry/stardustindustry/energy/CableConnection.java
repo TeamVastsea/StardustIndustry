@@ -80,9 +80,9 @@ public record CableConnection(CableAmpacity ampacity, CableInsulation insulation
         return new CableConnection(ampacity, insulation, newColor, a, b);
     }
 
-    /** Electrical identity shared by every cosmetic colour of this run. */
-    public CableRunKey runKey() {
-        return new CableRunKey(ampacity, insulation, a, b);
+    /** Stable identity of this run, independent of product, paint and endpoint order. */
+    public CableRunId runId() {
+        return new CableRunId(a, b);
     }
 
     /** The other end from {@code endpoint}, or {@code null} when it is not on this cable. */
@@ -124,9 +124,9 @@ public record CableConnection(CableAmpacity ampacity, CableInsulation insulation
         return insulation.shockAt(volts);
     }
 
-    /** True when two cables are the same product on the same two endpoints. */
+    /** True when two cable records describe the same physical endpoint pair. */
     public boolean sameRun(CableConnection other) {
-        return runKey().equals(other.runKey());
+        return other != null && runId().equals(other.runId());
     }
 
     /**

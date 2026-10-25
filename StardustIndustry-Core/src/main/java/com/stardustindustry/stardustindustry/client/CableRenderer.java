@@ -229,7 +229,7 @@ public class CableRenderer implements BlockEntityRenderer<TerminalMountBlockEnti
             sagMultiplier = ampacity.material().sagMultiplier();
         }
         drawTube(buffers.getBuffer(typeFor(textureFor(ampacity, insulation))), matrix, normal,
-                start, end, radiusOf(ampacity), CableColor.naturalColor(ampacity, insulation),
+                start, end, CableGeometry.radiusFor(ampacity), CableColor.naturalColor(ampacity, insulation),
                 sagMultiplier, packedLight);
     }
 
@@ -249,51 +249,8 @@ public class CableRenderer implements BlockEntityRenderer<TerminalMountBlockEnti
         // dye colour for it is ignored (§6.8).
         int rgb = cable.color().renderedColor(cable.ampacity(), cable.insulation());
         VertexConsumer tube = buffers.getBuffer(typeFor(textureFor(cable.ampacity(), cable.insulation())));
-        drawTube(tube, matrix, normal, from, to, radiusOf(cable.ampacity()), rgb,
+        drawTube(tube, matrix, normal, from, to, CableGeometry.radiusFor(cable.ampacity()), rgb,
                 cable.sagMultiplier(), packedLight);
-    }
-
-    /**
-     * Radius of a cable, from its <b>ampacity</b> rather than its position in the
-     * enum order.
-     *
-     * <h2>Why current, not index</h2>
-     * <p>The first version spread the radius evenly over the enum's order. That was
-     * fine while every class was copper and every step was about 3x, but it breaks
-     * as soon as a class exists for a different reason: an 800 A ACSR line would
-     * have been drawn <b>thinner than a 500 A copper one</b>, purely because it
-     * sits later in the list. A player reads thickness as "how much current", so
-     * thickness must follow current.</p>
-     *
-     * <h2>Why a fourth root, anchored on real diameters</h2>
-     * <p>Real figures: a 50 A copper conductor is about 5 mm across, a 500 A one
-     * about 16 mm, a 5 000 A busbar about 50 mm (1 block = 1 m, so 0.005–0.05
-     * blocks). Drawn to scale those are a small fraction of a pixel and vanish; the
-     * game has to magnify them. Magnifying everything equally would make the thin
-     * classes vanish anyway while turning the thick ones into pipes, so the
-     * magnification <b>decreases with size</b>: the same compression a root gives.</p>
-     *
-     * <p>The cube root (the first attempt) still pushed the 5 000 A class to 0.232
-     * blocks — a pipe, not a wire. A fourth root keeps the 50 A class exactly where
-     * it was and compresses the top end instead, which is the only place the eye
-     * complained: diameters now run 0.05 → 0.158 blocks, still monotonic and still
-     * clearly separable class by class, but no class reads as a barrel.</p>
-     *
-     * <p>Anchor {@code 0.05 blocks} is deliberate: at 16 px/m that is under a pixel
-     * of texture, but a cable is <b>geometry</b>, not a texture, so what matters is
-     * its screen size at viewing distance. 0.05 blocks reads at 5–10 blocks'
-     * range.</p>
-     *
-     * <p>A null class can only come from a record built by a stale client; it is
-     * drawn as the thinnest rather than throwing in the render loop.</p>
-     */
-    private static final float BASE_DIAMETER = 0.05f;
-
-    private static float radiusOf(CableAmpacity ampacity) {
-        int amps = ampacity == null ? CableAmpacity.A50.amps() : ampacity.amps();
-        int baseAmps = CableAmpacity.A50.amps();
-        double diameter = BASE_DIAMETER * Math.pow((double) amps / baseAmps, 0.25);
-        return (float) (diameter * 0.5);
     }
 
     /**
@@ -321,6 +278,9 @@ public class CableRenderer implements BlockEntityRenderer<TerminalMountBlockEnti
         };
 
         Vector3f run = new Vector3f(to).sub(from);
+        if (run.lengthSquared() < 1.0e-8f) {
+            return;
+        }
         Vector3f axis = new Vector3f(run).normalize();
         Vector3f side = new Vector3f(0f, 1f, 0f).cross(axis);
         if (side.lengthSquared() < 1.0e-6f) {
@@ -359,7 +319,8 @@ public class CableRenderer implements BlockEntityRenderer<TerminalMountBlockEnti
                 Vector3f faceNormal = new Vector3f(offsets[i]).add(offsets[j]).normalize();
                 quad(tube, matrix, normalMatrix, previousRing[i], previousRing[j], currentRing[j],
                         currentRing[i], faceNormal, channels,
-                        u(i), vPrevious, u(j), vPrevious, u(j), vCurrent, u(i), vCurrent,
+                        u(i), vPrevious, u(i + 1), vPrevious,
+                        u(i + 1), vCurrent, u(i), vCurrent,
                         packedLight);
             }
             previousCentre = centre;
@@ -398,10 +359,16 @@ public class CableRenderer implements BlockEntityRenderer<TerminalMountBlockEnti
         for (int i = 0; i < ring.length; i++) {
             Vector3f a = ring[i];
             Vector3f b = ring[(i + 1) % ring.length];
+            boolean reverse = new Vector3f(a).sub(centre)
+                    .cross(new Vector3f(b).sub(centre)).dot(facing) < 0f;
             // A fan slice as two triangles sharing an edge, expressed as a quad
             // with a degenerate fourth corner so one writer serves both shapes.
-            quad(tube, matrix, normalMatrix, centre, a, b, b, facing, rgb,
-                    0.5f, 0.5f, u(i), 0.0f, u(i + 1), 0.0f, u(i + 1), 0.0f, packedLight);
+            Vector3f first = reverse ? b : a;
+            Vector3f second = reverse ? a : b;
+            float firstU = reverse ? u(i + 1) : u(i);
+            float secondU = reverse ? u(i) : u(i + 1);
+            quad(tube, matrix, normalMatrix, centre, first, second, second, facing, rgb,
+                    0.5f, 0.5f, firstU, 0.0f, secondU, 0.0f, secondU, 0.0f, packedLight);
         }
     }
 

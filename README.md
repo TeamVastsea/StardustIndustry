@@ -91,9 +91,10 @@ later feature is expressed through it.
   ports expose the mod's `IElectricalPort`, not NeoForge `IEnergyStorage`; only
   the dedicated FE converter bridges to the FE ecosystem.
 - **`energy`** - `EnergyTier` defines the LV/MV/HV/EHV voltage ladder used by
-  machines, cables and transformers. The solver uses the same DC approximation
-  (`P = U * I`, `I = P / U`) for every wiring mode; phase modes affect conductor
-  count, nominal voltage and missing-phase faults, not the power formula.
+  machines, cables and transformers. Single-phase loads use `I = P / U_phase`;
+  balanced three-phase loads use `I = P / (sqrt(3) * U_line)`, with equal phase
+  currents and zero neutral current. The model intentionally omits phase angle,
+  reactive power, frequency and grid synchronization.
 - **`recipe`** - `ProcessingRecipe` is the shared single-input processing
   recipe, with probabilistic by-products, processing time and a continuous
   `powerWatts` requirement (JSON: `power_watts`). The codec

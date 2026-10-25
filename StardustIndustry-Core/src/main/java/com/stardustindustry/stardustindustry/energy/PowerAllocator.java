@@ -48,4 +48,21 @@ public final class PowerAllocator {
         }
         return List.copyOf(shares);
     }
+
+    /**
+     * Fills the first request before sharing any remainder proportionally between backup sources.
+     * This keeps a grid's dedicated source authoritative while allowing storage to cover only the
+     * part it cannot supply.
+     */
+    public static List<Long> primaryThenProportional(long availableWatts, List<Long> requests) {
+        if (requests.isEmpty()) {
+            return List.of();
+        }
+        long available = Math.max(0L, availableWatts);
+        long primary = Math.min(available, Math.max(0L, requests.getFirst()));
+        List<Long> shares = new ArrayList<>(requests.size());
+        shares.add(primary);
+        shares.addAll(proportional(available - primary, requests.subList(1, requests.size())));
+        return List.copyOf(shares);
+    }
 }

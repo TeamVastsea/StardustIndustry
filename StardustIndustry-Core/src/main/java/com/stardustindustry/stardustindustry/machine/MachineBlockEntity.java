@@ -237,6 +237,42 @@ public abstract class MachineBlockEntity extends BlockEntity {
         return powered || !powerInitialised;
     }
 
+    /** Latest state from any loaded physical energy port belonging to this controller. */
+    public final com.stardustindustry.stardustindustry.energy.GridState primaryGridState() {
+        com.stardustindustry.stardustindustry.energy.GridState fallback = null;
+        if (level != null) {
+            for (BlockPos portPos : knownPortPositions) {
+                if (!level.isLoaded(portPos)) {
+                    continue;
+                }
+                if (level.getBlockEntity(portPos)
+                        instanceof com.stardustindustry.stardustindustry.machine.port.EnergyPortBlockEntity port) {
+                    com.stardustindustry.stardustindustry.energy.GridState state = port.gridState();
+                    if (state.energized() || state.deliveredPowerWatts() > 0L) {
+                        return state;
+                    }
+                    if (fallback == null) {
+                        fallback = state;
+                    }
+                }
+            }
+        }
+        if (fallback != null) {
+            return fallback;
+        }
+        com.stardustindustry.stardustindustry.energy.WiringMode wiring =
+                tier.energyTier() == com.stardustindustry.stardustindustry.energy.EnergyTier.LV
+                        ? com.stardustindustry.stardustindustry.energy.WiringMode.THREE_PHASE_4_WIRE
+                        : com.stardustindustry.stardustindustry.energy.WiringMode.THREE_PHASE_3_WIRE;
+        return com.stardustindustry.stardustindustry.energy.GridState.offline(wiring,
+                com.stardustindustry.stardustindustry.energy.FaultKind.INCOMPLETE_WIRING, false);
+    }
+
+    /** Stable snapshot used by diagnostics to follow this controller to its physical ports. */
+    public final java.util.Set<BlockPos> boundPortPositions() {
+        return java.util.Set.copyOf(knownPortPositions);
+    }
+
     // ---- structure ----
 
     private void maintainStructure(Level level, BlockPos pos, BlockState state) {
@@ -269,6 +305,10 @@ public abstract class MachineBlockEntity extends BlockEntity {
      */
     private void maintainProviderStructure(Level level, com.stardustindustry.stardustindustry.multiblock.provider.StructureProvider provider) {
         if (formed && !provider.revalidateWhileFormed()) {
+            if (--recheckTimer <= 0) {
+                recheckTimer = STRUCTURE_RECHECK_INTERVAL;
+                reconcileLoadedKnownPorts();
+            }
             return;
         }
         if (--recheckTimer > 0) {
@@ -292,9 +332,11 @@ public abstract class MachineBlockEntity extends BlockEntity {
         com.stardustindustry.stardustindustry.multiblock.provider.StructureEvaluation previous = this.evaluation;
         com.stardustindustry.stardustindustry.multiblock.provider.StructureEvaluation result =
                 provider.evaluate(level, worldPosition, facing());
+        result = validateProviderEnergyTier(result);
 
-        boolean nowFormed = result.formed();
-        reconcileProviderPorts(level, previous, result);
+        boolean nowFormed = result.formed()
+                && (provider.revalidateWhileFormed() || installed);
+        reconcileProviderPorts(level, previous, result, nowFormed);
         this.evaluation = result;
 
         updateClientFailures(result.failures());
@@ -390,18 +432,21 @@ public abstract class MachineBlockEntity extends BlockEntity {
     private void reconcileProviderPorts(
             Level level,
             com.stardustindustry.stardustindustry.multiblock.provider.StructureEvaluation previous,
-            com.stardustindustry.stardustindustry.multiblock.provider.StructureEvaluation current) {
+            com.stardustindustry.stardustindustry.multiblock.provider.StructureEvaluation current,
+            boolean bindCurrent) {
         Set<BlockPos> previouslyBound = new HashSet<>(knownPortPositions);
         if (previous != null) {
             previouslyBound.addAll(providerPortPositions(previous));
         }
 
-        Set<BlockPos> retained = current.formed() ? providerPortPositions(current) : Set.of();
+        Set<BlockPos> retained = bindCurrent && current.formed()
+                ? providerPortPositions(current) : Set.of();
         for (BlockPos removed : removedPortPositions(previouslyBound, retained)) {
             unbindPort(level, removed);
         }
         for (BlockPos portPos : retained) {
-            if (level.getBlockEntity(portPos) instanceof MachinePortBlockEntity port) {
+            if (level.getBlockEntity(portPos) instanceof MachinePortBlockEntity port
+                    && canBindPort(port)) {
                 port.bind(worldPosition);
             }
         }
@@ -435,6 +480,24 @@ public abstract class MachineBlockEntity extends BlockEntity {
         }
     }
 
+    /** Unbinds every known provider port without loading any absent chunk. */
+    private void unbindKnownProviderPorts() {
+        if (level == null) {
+            knownPortPositions.clear();
+            return;
+        }
+        Set<BlockPos> ports = new HashSet<>(knownPortPositions);
+        if (evaluation != null) {
+            ports.addAll(providerPortPositions(evaluation));
+        }
+        for (BlockPos portPos : ports) {
+            if (level.isLoaded(portPos)) {
+                unbindPort(level, portPos);
+            }
+        }
+        replaceKnownPortPositions(Set.of());
+    }
+
     private void replaceKnownPortPositions(Collection<BlockPos> positions) {
         Set<BlockPos> replacement = new HashSet<>();
         for (BlockPos position : positions) {
@@ -456,10 +519,26 @@ public abstract class MachineBlockEntity extends BlockEntity {
      * its old NBT binding instead of registering itself back as a ghost port.</p>
      */
     final boolean rememberBoundPort(BlockPos portPos) {
+        if (!formed) {
+            return false;
+        }
+        if (level != null && level.getBlockEntity(portPos) instanceof MachinePortBlockEntity port
+                && !canBindPort(port)) {
+            return false;
+        }
         if (evaluation != null
                 && (!evaluation.formed()
                 || evaluation.roles().get(portPos)
                 != com.stardustindustry.stardustindustry.multiblock.BlockRole.PORT)) {
+            return false;
+        }
+        StructureDefinition definition = definition();
+        if (evaluation == null && definition != null
+                && !definitionPortPositions(worldPosition, facing(), definition).contains(portPos)) {
+            return false;
+        }
+        // A single-block machine has no legitimate external machine ports.
+        if (evaluation == null && definition == null && provider() == null) {
             return false;
         }
         // An installed static machine cannot be re-scanned because its body is
@@ -473,6 +552,46 @@ public abstract class MachineBlockEntity extends BlockEntity {
         return true;
     }
 
+    /** World-space port positions authored by a legacy structure definition. */
+    static Set<BlockPos> definitionPortPositions(
+            BlockPos controller, Direction facing, StructureDefinition definition) {
+        net.minecraft.world.level.block.Rotation rotation = StructureRotation.forFacing(facing);
+        Set<BlockPos> ports = new HashSet<>();
+        for (StructurePart part : definition.parts()) {
+            if (part.role().isPort()) {
+                ports.add(controller.offset(StructureRotation.rotate(part.offset(), rotation)).immutable());
+            }
+        }
+        return ports;
+    }
+
+    /** True when a physical energy port matches both the controller and its energy module. */
+    public final boolean acceptsEnergyPortTier(com.stardustindustry.stardustindustry.energy.EnergyTier portTier) {
+        JouleStorageModule storage = modules.get(JouleStorageModule.class);
+        return portTier != null && storage != null
+                && portTier == tier.energyTier() && portTier == storage.tier();
+    }
+
+    private boolean canBindPort(MachinePortBlockEntity port) {
+        return !(port instanceof com.stardustindustry.stardustindustry.machine.port.EnergyPortBlockEntity energyPort)
+                || acceptsEnergyPortTier(energyPort.tier());
+    }
+
+    private com.stardustindustry.stardustindustry.multiblock.provider.StructureEvaluation validateProviderEnergyTier(
+            com.stardustindustry.stardustindustry.multiblock.provider.StructureEvaluation result) {
+        JouleStorageModule storage = modules.get(JouleStorageModule.class);
+        if (!result.formed() || storage == null
+                || result.tier() == tier.energyTier() && storage.tier() == tier.energyTier()) {
+            return result;
+        }
+        var failure = new com.stardustindustry.stardustindustry.multiblock.provider.ScanFailure(
+                worldPosition,
+                com.stardustindustry.stardustindustry.multiblock.BlockRole.CONTROLLER,
+                "structure.stardustindustry.need.base_tier");
+        return com.stardustindustry.stardustindustry.multiblock.provider.StructureEvaluation.failed(
+                result.tier(), java.util.List.of(failure), result.roles(), result.fillers());
+    }
+
     /** Invalidates consumers without changing either side's persistent binding. */
     private void invalidateKnownPortCapabilities() {
         if (level == null) {
@@ -481,6 +600,62 @@ public abstract class MachineBlockEntity extends BlockEntity {
         for (BlockPos portPos : knownPortPositions) {
             level.invalidateCapabilities(portPos);
         }
+    }
+
+    /**
+     * Reconciles the controller half of persisted port bindings without loading chunks.
+     * A port whose chunk is absent validates itself from {@link MachinePortBlockEntity#onLoad()}.
+     */
+    private void reconcileLoadedKnownPorts() {
+        if (level == null || level.isClientSide() || knownPortPositions.isEmpty()) {
+            return;
+        }
+        Set<BlockPos> retained = new HashSet<>(knownPortPositions);
+        BlockPos brokenInstalledPort = null;
+        for (BlockPos portPos : knownPortPositions) {
+            if (!level.isLoaded(portPos)) {
+                continue;
+            }
+            BlockEntity entity = level.getBlockEntity(portPos);
+            if (!(entity instanceof MachinePortBlockEntity port)) {
+                // A matching port BE can be attached just after the controller's
+                // onLoad callback. Keep only that transient case; every other
+                // loaded block proves the persisted entry is orphaned.
+                if (entity != null || !(level.getBlockState(portPos).getBlock() instanceof MachinePortBlock)) {
+                    retained.remove(portPos);
+                    brokenInstalledPort = portPos;
+                }
+                continue;
+            }
+            if (!canBindPort(port)) {
+                if (worldPosition.equals(port.controllerPos())) {
+                    port.unbind();
+                }
+                retained.remove(portPos);
+                brokenInstalledPort = portPos;
+                continue;
+            }
+
+            BlockPos persistedOwner = port.controllerPos();
+            if (persistedOwner == null || worldPosition.equals(persistedOwner)) {
+                port.bind(worldPosition);
+                continue;
+            }
+            // Give a foreign binding one chance to prove or clear itself. Never
+            // steal a live port from another formed controller.
+            MachineBlockEntity owner = port.controller();
+            if (owner == null && port.controllerPos() == null) {
+                port.bind(worldPosition);
+            } else if (owner != this) {
+                retained.remove(portPos);
+                brokenInstalledPort = portPos;
+            }
+        }
+        if (installed && brokenInstalledPort != null) {
+            onStructureBroken(brokenInstalledPort);
+            return;
+        }
+        replaceKnownPortPositions(retained);
     }
 
     /** Re-runs the structure check and fires the formed/unformed edge. */
@@ -545,7 +720,8 @@ public abstract class MachineBlockEntity extends BlockEntity {
             }
             BlockPos worldPos = result.worldPos(part.offset());
             bound.add(worldPos.immutable());
-            if (level.getBlockEntity(worldPos) instanceof MachinePortBlockEntity port) {
+            if (level.getBlockEntity(worldPos) instanceof MachinePortBlockEntity port
+                    && canBindPort(port)) {
                 port.bind(worldPosition);
             }
         }
@@ -666,6 +842,7 @@ public abstract class MachineBlockEntity extends BlockEntity {
             if (installed) {
                 // The controller is gone: restore the rest of the machine and drop
                 // its contents, or the shell would be stranded invisible.
+                dropContents();
                 clearContents();
                 for (int i = ledger.size() - 1; i >= 0; i--) {
                     PlacedPart part = ledger.get(i);
@@ -677,20 +854,13 @@ public abstract class MachineBlockEntity extends BlockEntity {
                 ledger.clear();
                 installed = false;
             }
-            if (evaluation != null) {
-                for (BlockPos portPos : providerPortPositions(evaluation)) {
-                    unbindPort(level, portPos);
-                }
-            }
             StructureDefinition definition = definition();
             if (definition != null) {
                 unbindPorts(level, definition);
             } else {
-                for (BlockPos portPos : Set.copyOf(knownPortPositions)) {
-                    unbindPort(level, portPos);
-                }
-                replaceKnownPortPositions(Set.of());
+                unbindKnownProviderPorts();
             }
+            evaluation = null;
         }
     }
 
@@ -698,6 +868,7 @@ public abstract class MachineBlockEntity extends BlockEntity {
     public void onLoad() {
         super.onLoad();
         if (level != null && !level.isClientSide()) {
+            reconcileLoadedKnownPorts();
             invalidateKnownPortCapabilities();
         }
     }
@@ -835,8 +1006,8 @@ public abstract class MachineBlockEntity extends BlockEntity {
         }
 
         var previous = this.evaluation;
-        var result = provider.evaluate(level, worldPosition, facing());
-        reconcileProviderPorts(level, previous, result);
+        var result = validateProviderEnergyTier(provider.evaluate(level, worldPosition, facing()));
+        reconcileProviderPorts(level, previous, result, result.formed());
         this.evaluation = result;
         if (!result.formed()) {
             if (formed) {
@@ -895,9 +1066,11 @@ public abstract class MachineBlockEntity extends BlockEntity {
 
         if (returnContents) {
             dropContents();
-        } else {
-            clearContents();
         }
+        // contentsToDrop() returns snapshots. Clear the owning modules after a
+        // successful drop so reinstalling and dismantling cannot duplicate them.
+        clearContents();
+        unbindKnownProviderPorts();
 
         // Restore the ledger in reverse so later writes do not clobber earlier ones.
         for (int i = ledger.size() - 1; i >= 0; i--) {
@@ -912,6 +1085,7 @@ public abstract class MachineBlockEntity extends BlockEntity {
 
         ledger.clear();
         installed = false;
+        evaluation = null;
         if (formed) {
             setFormed(false);
         }
@@ -939,6 +1113,7 @@ public abstract class MachineBlockEntity extends BlockEntity {
             return;
         }
         clearContents();
+        unbindKnownProviderPorts();
         for (int i = ledger.size() - 1; i >= 0; i--) {
             PlacedPart part = ledger.get(i);
             if (part.worldPos().equals(brokenPos)) {
@@ -952,6 +1127,7 @@ public abstract class MachineBlockEntity extends BlockEntity {
         }
         ledger.clear();
         installed = false;
+        evaluation = null;
         if (formed) {
             setFormed(false);
         }
@@ -1020,6 +1196,9 @@ public abstract class MachineBlockEntity extends BlockEntity {
             }
             tag.putLongArray("KnownPorts", positions);
         }
+        if (installed && evaluation != null && evaluation.formed()) {
+            tag.put("InstalledEvaluation", evaluation.save());
+        }
     }
 
     @Override
@@ -1052,6 +1231,58 @@ public abstract class MachineBlockEntity extends BlockEntity {
                 }
             }
         }
+        evaluation = installed && tag.contains("InstalledEvaluation", net.minecraft.nbt.Tag.TAG_COMPOUND)
+                ? com.stardustindustry.stardustindustry.multiblock.provider.StructureEvaluation.load(
+                        tag.getCompound("InstalledEvaluation"))
+                : null;
+        if (installed && (evaluation == null || !evaluation.formed())) {
+            evaluation = evaluationFromInstalledLedger();
+        }
+    }
+
+    /** Migrates installed machines saved before structure snapshots were persisted. */
+    private com.stardustindustry.stardustindustry.multiblock.provider.StructureEvaluation evaluationFromInstalledLedger() {
+        Map<BlockPos, com.stardustindustry.stardustindustry.multiblock.BlockRole> roles = new java.util.HashMap<>();
+        Map<com.stardustindustry.stardustindustry.multiblock.provider.FillerKind, Integer> fillers =
+                new java.util.EnumMap<>(com.stardustindustry.stardustindustry.multiblock.provider.FillerKind.class);
+        java.util.List<com.stardustindustry.stardustindustry.energy.EnergyTier> tiers = new java.util.ArrayList<>();
+        for (PlacedPart part : ledger) {
+            com.stardustindustry.stardustindustry.multiblock.BlockRole role;
+            try {
+                role = com.stardustindustry.stardustindustry.multiblock.BlockRole.valueOf(part.role());
+            } catch (IllegalArgumentException ignored) {
+                continue;
+            }
+            roles.put(part.worldPos().immutable(), role);
+            com.stardustindustry.stardustindustry.energy.EnergyTier partTier =
+                    com.stardustindustry.stardustindustry.multiblock.TierMaterials.tierOf(part.originalState());
+            if (partTier != null) {
+                tiers.add(partTier);
+            }
+            com.stardustindustry.stardustindustry.multiblock.provider.FillerKind filler =
+                    com.stardustindustry.stardustindustry.multiblock.MachinePartTypes
+                            .fillerKindOf(part.originalState());
+            if (filler != null) {
+                fillers.merge(filler, 1, Integer::sum);
+            }
+        }
+        com.stardustindustry.stardustindustry.multiblock.modifier.ModifierSet modifiers =
+                com.stardustindustry.stardustindustry.multiblock.modifier.ModifierSet.BASE;
+        for (Map.Entry<com.stardustindustry.stardustindustry.multiblock.provider.FillerKind, Integer> entry
+                : fillers.entrySet()) {
+            var modifier = com.stardustindustry.stardustindustry.multiblock.modifier.FillerRegistry
+                    .modifierOf(entry.getKey());
+            for (int count = 0; count < entry.getValue(); count++) {
+                modifiers = modifiers.plus(modifier);
+            }
+        }
+        com.stardustindustry.stardustindustry.energy.EnergyTier restoredTier =
+                com.stardustindustry.stardustindustry.multiblock.TierMaterials.commonTier(tiers);
+        if (restoredTier == null) {
+            restoredTier = tier.energyTier();
+        }
+        return com.stardustindustry.stardustindustry.multiblock.provider.StructureEvaluation
+                .formed(restoredTier, modifiers, roles, fillers);
     }
 
     /** Override to persist machine-specific state beyond its modules. */

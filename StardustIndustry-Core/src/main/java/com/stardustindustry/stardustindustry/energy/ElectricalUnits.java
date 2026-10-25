@@ -2,10 +2,11 @@ package com.stardustindustry.stardustindustry.energy;
 
 import java.util.Locale;
 
-/** Exact unit conversions and the DC-equivalent equations used by the grid solver. */
+/** Exact unit conversions and the balanced real-power equations used by the grid solver. */
 public final class ElectricalUnits {
     public static final int TICKS_PER_SECOND = 20;
     public static final long JOULES_PER_KILOWATT_HOUR = 3_600_000L;
+    public static final double SQRT_3 = Math.sqrt(3.0);
 
     private ElectricalUnits() {}
 
@@ -16,11 +17,33 @@ public final class ElectricalUnits {
         return powerWatts / (double) volts;
     }
 
+    /**
+     * RMS line current at unity power factor. Three-phase voltage is line-to-line;
+     * single-phase voltage is line-to-neutral.
+     */
+    public static double currentAmps(long powerWatts, int volts, WiringMode wiring) {
+        if (powerWatts <= 0 || volts <= 0) {
+            return 0.0;
+        }
+        double phaseFactor = wiring.threePhase() ? SQRT_3 : 1.0;
+        return powerWatts / (phaseFactor * volts);
+    }
+
     public static long powerWatts(int volts, double currentAmps) {
         if (volts <= 0 || currentAmps <= 0.0 || !Double.isFinite(currentAmps)) {
             return 0L;
         }
         double watts = volts * currentAmps;
+        return watts >= Long.MAX_VALUE ? Long.MAX_VALUE : Math.round(watts);
+    }
+
+    /** Real power at unity power factor for one supported wiring mode. */
+    public static long powerWatts(int volts, double currentAmps, WiringMode wiring) {
+        if (volts <= 0 || currentAmps <= 0.0 || !Double.isFinite(currentAmps)) {
+            return 0L;
+        }
+        double phaseFactor = wiring.threePhase() ? SQRT_3 : 1.0;
+        double watts = phaseFactor * volts * currentAmps;
         return watts >= Long.MAX_VALUE ? Long.MAX_VALUE : Math.round(watts);
     }
 
@@ -42,7 +65,8 @@ public final class ElectricalUnits {
 
     public static double lineLossWatts(double currentAmps, double ohmsPerConductor,
                                        WiringMode wiring) {
-        return resistiveLossWatts(currentAmps, ohmsPerConductor) * wiring.requiredConductors();
+        return resistiveLossWatts(currentAmps, ohmsPerConductor)
+                * wiring.currentCarryingConductors();
     }
 
     public static long kilowattHoursToJoules(long kilowattHours) {

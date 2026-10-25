@@ -38,6 +38,22 @@ public final class ModNetwork {
                 CableEditPayload.TYPE,
                 CableEditPayload.STREAM_CODEC,
                 ModNetwork::handleCableEdit);
+        registrar.playToServer(
+                ElectricalDiagnosticRequestPayload.TYPE,
+                ElectricalDiagnosticRequestPayload.STREAM_CODEC,
+                ModNetwork::handleElectricalDiagnosticRequest);
+        registrar.playToServer(
+                DeviceControlPayload.TYPE,
+                DeviceControlPayload.STREAM_CODEC,
+                ModNetwork::handleDeviceControl);
+        registrar.playToServer(
+                StorageModePayload.TYPE,
+                StorageModePayload.STREAM_CODEC,
+                ModNetwork::handleStorageMode);
+        registrar.playToClient(
+                TelemetryUpdatePayload.TYPE,
+                TelemetryUpdatePayload.STREAM_CODEC,
+                ModNetwork::handleTelemetryUpdate);
     }
 
     /**
@@ -84,8 +100,8 @@ public final class ModNetwork {
             }
             return;
         }
-        com.stardustindustry.stardustindustry.energy.CableColor color = heldDyeColor(player, payload.dyeIndex());
-        if (color == null) {
+        HeldDye heldDye = heldDye(player, payload.dyeIndex());
+        if (heldDye == null) {
             return;
         }
         if (!com.stardustindustry.stardustindustry.energy.CableColor.isPaintable(actual.insulation())) {
@@ -96,7 +112,11 @@ public final class ModNetwork {
                     .withStyle(net.minecraft.ChatFormatting.YELLOW), true);
             return;
         }
-        if (com.stardustindustry.stardustindustry.energy.CableService.recolor(player.level(), actual, color)) {
+        if (com.stardustindustry.stardustindustry.energy.CableService.recolor(
+                player.level(), actual, heldDye.color())) {
+            if (!player.getAbilities().instabuild) {
+                heldDye.stack().shrink(1);
+            }
             player.displayClientMessage(net.minecraft.network.chat.Component.translatable(
                     "message.stardustindustry.cable.dyed")
                     .withStyle(net.minecraft.ChatFormatting.GRAY), true);
@@ -111,7 +131,7 @@ public final class ModNetwork {
      * with a dye that has since been put away) simply does nothing instead of
      * painting with whatever happens to be in hand now.</p>
      */
-    private static com.stardustindustry.stardustindustry.energy.CableColor heldDyeColor(
+    private static HeldDye heldDye(
             ServerPlayer player, int dyeIndex) {
         if (dyeIndex < 0
                 || dyeIndex >= com.stardustindustry.stardustindustry.energy.CableColor.DYE_COLORS.length) {
@@ -123,11 +143,54 @@ public final class ModNetwork {
                 int held = dye.getDyeColor().ordinal();
                 // DyeColor ordinals match DYE_COLORS: white first, black last.
                 if (held == dyeIndex) {
-                    return com.stardustindustry.stardustindustry.energy.CableColor.ofDyeIndex(held);
+                    return new HeldDye(
+                            com.stardustindustry.stardustindustry.energy.CableColor.ofDyeIndex(held),
+                            stack);
                 }
             }
         }
         return null;
+    }
+
+    private record HeldDye(com.stardustindustry.stardustindustry.energy.CableColor color,
+                           net.minecraft.world.item.ItemStack stack) {}
+
+    private static void handleElectricalDiagnosticRequest(
+            ElectricalDiagnosticRequestPayload payload, IPayloadContext context) {
+        if (!(context.player() instanceof ServerPlayer player)
+                || !withinReach(player, payload.rackPos(), player.blockInteractionRange())
+                || !(player.level().getBlockEntity(payload.rackPos())
+                instanceof com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlockEntity)
+                || !holdsElectriciansMeter(player)
+                || !payload.targetsCableOnClickedRack()) {
+            return;
+        }
+        if (payload.cableRun() == null) {
+            com.stardustindustry.stardustindustry.menu.ElectricalUi.openDiagnostic(
+                    player, payload.rackPos());
+            return;
+        }
+        if (!(player.level() instanceof net.minecraft.server.level.ServerLevel serverLevel)) {
+            return;
+        }
+        com.stardustindustry.stardustindustry.energy.CableConnection cable =
+                com.stardustindustry.stardustindustry.energy.ElectricalNetworkSavedData
+                        .get(serverLevel).cable(payload.cableRun());
+        if (cable == null || !cable.runId().touches(payload.rackPos())) {
+            return;
+        }
+        com.stardustindustry.stardustindustry.menu.ElectricalUi.openCableDiagnostic(
+                player, payload.rackPos(), payload.cableRun());
+    }
+
+    private static boolean holdsElectriciansMeter(ServerPlayer player) {
+        for (net.minecraft.world.InteractionHand hand : net.minecraft.world.InteractionHand.values()) {
+            if (player.getItemInHand(hand).getItem()
+                    instanceof com.stardustindustry.stardustindustry.energy.ElectriciansMeterItem) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -236,5 +299,38 @@ public final class ModNetwork {
         }
         machine.dismantle(true);
         player.closeContainer();
+    }
+
+    private static void handleDeviceControl(DeviceControlPayload payload, IPayloadContext context) {
+        if (!(context.player() instanceof ServerPlayer player)
+                || !(player.containerMenu instanceof com.stardustindustry.stardustindustry.menu.ElectricalDeviceMenu menu)
+                || !menu.targetPos().equals(payload.pos()) || !menu.stillValid(player)
+                || !(player.level().getBlockEntity(payload.pos())
+                instanceof com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceBlockEntity device)) {
+            return;
+        }
+        switch (payload.action()) {
+            case TOGGLE_SWITCH -> device.toggleSwitch();
+            case CYCLE_CONFIGURATION -> device.cycleConfiguration();
+            case CYCLE_CREATIVE_TIER -> device.cycleCreativeTier();
+        }
+    }
+
+    private static void handleStorageMode(StorageModePayload payload, IPayloadContext context) {
+        if (!(context.player() instanceof ServerPlayer player)
+                || !(player.containerMenu instanceof com.stardustindustry.stardustindustry.menu.StorageStationMenu menu)
+                || !menu.targetPos().equals(payload.pos()) || !menu.stillValid(player)
+                || !(player.level().getBlockEntity(payload.pos())
+                instanceof com.stardustindustry.stardustindustry.machine.storage.StorageStationBlockEntity station)) {
+            return;
+        }
+        station.setStorageMode(payload.mode());
+    }
+
+    private static void handleTelemetryUpdate(TelemetryUpdatePayload payload, IPayloadContext context) {
+        if (context.player().containerMenu instanceof com.stardustindustry.stardustindustry.menu.TelemetryMenu menu
+                && menu.containerId == payload.containerId()) {
+            menu.acceptTelemetry(payload.snapshot());
+        }
     }
 }

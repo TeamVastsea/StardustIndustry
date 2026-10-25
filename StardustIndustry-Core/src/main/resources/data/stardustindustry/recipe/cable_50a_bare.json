@@ -1,0 +1,7 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": ["CCC"],
+  "key": { "C": { "tag": "c:ingots/copper" } },
+  "result": { "id": "stardustindustry:cable_50a_bare", "count": 8 }
+}

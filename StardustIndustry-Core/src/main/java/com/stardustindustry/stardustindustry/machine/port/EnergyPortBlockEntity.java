@@ -1,7 +1,9 @@
 package com.stardustindustry.stardustindustry.machine.port;
 
 import com.stardustindustry.stardustindustry.energy.DestructiveFaultTracker;
+import com.stardustindustry.stardustindustry.energy.ElectricalAccountKey;
 import com.stardustindustry.stardustindustry.energy.ElectricalPortRole;
+import com.stardustindustry.stardustindustry.energy.ElectricalPortGroupKey;
 import com.stardustindustry.stardustindustry.energy.ElectricalUnits;
 import com.stardustindustry.stardustindustry.energy.EnergyTier;
 import com.stardustindustry.stardustindustry.energy.FaultKind;
@@ -86,7 +88,10 @@ public class EnergyPortBlockEntity extends MachinePortBlockEntity
 
     @Override
     public boolean enabled() {
-        return controller() != null && controller().isFormed();
+        var machine = controller();
+        return machine != null && machine.isFormed() && machine.acceptsEnergyPortTier(tier())
+                && (!(machine instanceof StorageStationBlockEntity station)
+                || station.storageMode() != com.stardustindustry.stardustindustry.machine.storage.StorageMode.DISCONNECTED);
     }
 
     private JouleStorageModule storage() {
@@ -102,14 +107,23 @@ public class EnergyPortBlockEntity extends MachinePortBlockEntity
 
     @Override
     public Object energyAccount() {
-        JouleStorageModule storage = storage();
-        return storage == null ? this : storage;
+        BlockPos owner = controllerPos();
+        return new ElectricalAccountKey(owner == null ? worldPosition : owner,
+                owner == null ? "orphan-energy-port" : "machine-energy");
+    }
+
+    @Override
+    public Object portGroup() {
+        BlockPos owner = controllerPos();
+        return new ElectricalPortGroupKey(owner == null ? worldPosition : owner,
+                owner == null ? "orphan-energy-port" : "machine-energy");
     }
 
     @Override
     public long requestedPowerWatts() {
         var storage = storage();
-        if (storage == null) {
+        if (storage == null || controller() instanceof StorageStationBlockEntity station
+                && !station.storageMode().allowsCharge()) {
             return 0L;
         }
         long headroomPerSecond = ElectricalUnits.wattsFromJoulesPerTick(
@@ -120,7 +134,8 @@ public class EnergyPortBlockEntity extends MachinePortBlockEntity
     @Override
     public long availablePowerWatts() {
         var storage = storage();
-        if (storage == null) {
+        if (storage == null || controller() instanceof StorageStationBlockEntity station
+                && !station.storageMode().allowsDischarge()) {
             return 0L;
         }
         return Math.min(maxPowerWatts(), ElectricalUnits.wattsFromJoulesPerTick(storage.storedJoules()));
@@ -129,13 +144,17 @@ public class EnergyPortBlockEntity extends MachinePortBlockEntity
     @Override
     public long receiveJoules(long amount, boolean simulate) {
         var storage = storage();
-        return storage == null ? 0L : storage.receiveJoules(amount, simulate);
+        return storage == null || controller() instanceof StorageStationBlockEntity station
+                && !station.storageMode().allowsCharge()
+                ? 0L : storage.receiveJoules(amount, simulate);
     }
 
     @Override
     public long extractJoules(long amount, boolean simulate) {
         var storage = storage();
-        return storage == null ? 0L : storage.extractJoules(amount, simulate);
+        return storage == null || controller() instanceof StorageStationBlockEntity station
+                && !station.storageMode().allowsDischarge()
+                ? 0L : storage.extractJoules(amount, simulate);
     }
 
     @Override
@@ -148,6 +167,12 @@ public class EnergyPortBlockEntity extends MachinePortBlockEntity
         setChanged();
     }
 
+    @Override
+    public void updateGridStateReplica(GridState state) {
+        gridState = state;
+        setChanged();
+    }
+
     public GridState gridState() {
         return gridState;
     }
@@ -156,6 +181,7 @@ public class EnergyPortBlockEntity extends MachinePortBlockEntity
     protected void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.saveAdditional(tag, registries);
         tag.putString("Wiring", configuredWiring.id());
+        tag.put("DestructiveFaults", destructiveFaults.save());
     }
 
     @Override
@@ -164,7 +190,7 @@ public class EnergyPortBlockEntity extends MachinePortBlockEntity
         configuredWiring = tier() == EnergyTier.LV
                 ? WiringMode.byId(tag.getString("Wiring"))
                 : WiringMode.THREE_PHASE_3_WIRE;
-        destructiveFaults.reset();
+        destructiveFaults.load(tag.getCompound("DestructiveFaults"));
         gridState = GridState.offline(configuredWiring, FaultKind.INCOMPLETE_WIRING, false);
     }
 

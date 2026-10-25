@@ -13,6 +13,8 @@ import org.junit.jupiter.api.Test;
 import com.stardustindustry.stardustindustry.energy.device.ElectricalDeviceKind;
 import com.stardustindustry.stardustindustry.energy.device.ProtectionModel;
 
+import net.minecraft.core.BlockPos;
+
 class GridPowerModelTest {
     @Test
     void radialFlowUsesEachBranchCurrentAndCoolsAnIdleBranch() {
@@ -75,6 +77,30 @@ class GridPowerModelTest {
         assertEquals(List.of(Long.MAX_VALUE / 2 + 1L, Long.MAX_VALUE / 2),
                 PowerAllocator.proportional(Long.MAX_VALUE,
                         List.of(Long.MAX_VALUE, Long.MAX_VALUE)));
+    }
+
+    @Test
+    void dedicatedSourceIsFilledBeforeStorageSharesTheRemainingDeficit() {
+        assertEquals(List.of(20_000L, 2_500L, 2_500L),
+                PowerAllocator.primaryThenProportional(
+                        25_000L, List.of(20_000L, 100_000L, 100_000L)));
+        assertEquals(List.of(10_000L, 0L, 0L),
+                PowerAllocator.primaryThenProportional(
+                        10_000L, List.of(20_000L, 100_000L, 100_000L)));
+    }
+
+    @Test
+    void storageCoveringOnlyLineLossStillInjectsTopologyCurrent() {
+        List<Long> sourceDraws = PowerAllocator.primaryThenProportional(
+                10_100L, List.of(10_000L, 10_000L));
+
+        List<Long> injections = ElectricalGridService.topologyInjectionShares(
+                10_000L, sourceDraws);
+
+        assertEquals(10_100L, sourceDraws.stream().mapToLong(Long::longValue).sum());
+        assertEquals(10_000L, injections.stream().mapToLong(Long::longValue).sum());
+        assertTrue(injections.get(1) > 0L,
+                "storage paying the line loss must carry current on its branch");
     }
 
     @Test
@@ -161,6 +187,22 @@ class GridPowerModelTest {
     }
 
     @Test
+    void stableAccountKeysShareBudgetsAndRemaindersAcrossReloadedPortObjects() {
+        ElectricalAccountKey firstKey = new ElectricalAccountKey(new BlockPos(4, 5, 6), "machine-energy");
+        ElectricalAccountKey reloadedKey = new ElectricalAccountKey(new BlockPos(4, 5, 6), "machine-energy");
+        BudgetPort first = new BudgetPort(firstKey, 100L, false, ElectricalPortRole.STORAGE);
+        BudgetPort reloaded = new BudgetPort(reloadedKey, 100L, false, ElectricalPortRole.STORAGE);
+        GridTransferLedger ledger = new GridTransferLedger();
+
+        ledger.recordExtracted(first, 60L);
+        assertEquals(40L, ledger.extractableWatts(reloaded));
+
+        GridEnergyTransaction.Remainders remainders = new GridEnergyTransaction.Remainders();
+        remainders.set(firstKey, GridEnergyTransaction.Direction.EXTRACT, 17L);
+        assertEquals(17L, remainders.get(reloadedKey, GridEnergyTransaction.Direction.EXTRACT));
+    }
+
+    @Test
     void passThroughAccountHasIndependentReceiveAndExtractBudgets() {
         Object account = new Object();
         BudgetPort input = new BudgetPort(account, 100L, true, ElectricalPortRole.LOAD);
@@ -223,24 +265,27 @@ class GridPowerModelTest {
     }
 
     @Test
-    void protectionSignalsOnlyForSaturatedUnmetOvercurrentDemand() {
+    void protectionSignalUsesSettledCurrentInsteadOfRequestedPower() {
         IElectricalPort protection = new IElectricalPort() {
             @Override public EnergyTier tier() { return EnergyTier.LV; }
             @Override public WiringMode wiring() { return WiringMode.THREE_PHASE_4_WIRE; }
             @Override public ElectricalPortRole electricalRole() { return ElectricalPortRole.SOURCE; }
             @Override public boolean enabled() { return true; }
-            @Override public long maxPowerWatts() { return 57_000L; }
+            @Override public long maxPowerWatts() { return 114_000L; }
             @Override public long overcurrentTripWatts() { return 57_000L; }
         };
+        WiringMode wiring = protection.wiring();
+        double ratedCurrent = wiring.lineCurrentAmps(
+                protection.overcurrentTripWatts(), protection.tier());
 
-        assertFalse(ElectricalGridService.signalsOvercurrent(protection,
-                57_000L, 57_000L, 56_000L), "the rating itself is not an overload");
-        assertFalse(ElectricalGridService.signalsOvercurrent(protection,
-                60_000L, 40_000L, 40_000L), "upstream starvation is not an overload");
-        assertFalse(ElectricalGridService.signalsOvercurrent(protection,
-                60_000L, 57_000L, 60_000L), "local storage may satisfy the excess demand");
-        assertTrue(ElectricalGridService.signalsOvercurrent(protection,
-                60_000L, 57_000L, 56_000L));
+        assertFalse(ElectricalGridService.isMeasuredOvercurrent(protection,
+                ratedCurrent - 0.001, wiring, protection.tier()),
+                "an oversized request with lower actual current must not trip");
+        assertFalse(ElectricalGridService.isMeasuredOvercurrent(protection,
+                ratedCurrent, wiring, protection.tier()),
+                "the exact nameplate current must not trip");
+        assertTrue(ElectricalGridService.isMeasuredOvercurrent(protection,
+                ratedCurrent + 0.001, wiring, protection.tier()));
     }
 
     @Test
@@ -294,6 +339,46 @@ class GridPowerModelTest {
         assertTrue(ElectricalGridService.isSolvedExactCircuit(true, true));
         assertFalse(ElectricalGridService.isSolvedExactCircuit(true, false),
                 "an exact-root source excluded as incomplete was never part of the solved circuit");
+    }
+
+    @Test
+    void unloadedSourceLeavesACompleteLocalLoadDeenergizedWithoutAPhaseFault() {
+        assertEquals(FaultKind.UNDERVOLTAGE,
+                ElectricalGridService.offlineFaultWithoutSource(false));
+        assertEquals(FaultKind.INCOMPLETE_WIRING,
+                ElectricalGridService.offlineFaultWithoutSource(true));
+    }
+
+    @Test
+    void aCableEntersTheLoadedThermalSolverOnlyWhenBothEndpointsArePresent() {
+        TerminalEndpoint a = new TerminalEndpoint(new BlockPos(0, 64, 0), 0);
+        TerminalEndpoint b = new TerminalEndpoint(new BlockPos(32, 64, 0), 0);
+        CableConnection cable = CableConnection.of(
+                CableAmpacity.A150, CableInsulation.CLASS_1, a, b);
+
+        assertFalse(ElectricalGridService.bothEndpointsPresent(cable, java.util.Set.of(a)));
+        assertTrue(ElectricalGridService.bothEndpointsPresent(cable, java.util.Set.of(a, b)));
+    }
+
+    @Test
+    void halfLoadedRunIsClassifiedWithoutResolvingItsRemoteEndpoint() {
+        TerminalEndpoint local = new TerminalEndpoint(new BlockPos(15, 64, 0), 0);
+        TerminalEndpoint remote = new TerminalEndpoint(new BlockPos(16, 64, 0), 0);
+        CableConnection cable = CableConnection.of(
+                CableAmpacity.A150, CableInsulation.CLASS_1, local, remote);
+        java.util.concurrent.atomic.AtomicInteger probes = new java.util.concurrent.atomic.AtomicInteger();
+
+        var boundary = ElectricalGridService.loadedEndpointsWithUnloadedPeers(
+                List.of(cable), java.util.Set.of(local), pos -> {
+                    probes.incrementAndGet();
+                    return pos.getX() < 16;
+                });
+
+        assertEquals(java.util.Set.of(local), boundary);
+        assertEquals(1, probes.get(), "only the absent endpoint's chunk should be checked");
+        assertTrue(ElectricalGridService.loadedEndpointsWithUnloadedPeers(
+                List.of(cable), java.util.Set.of(local, remote), pos -> false).isEmpty(),
+                "a fully loaded run must not be classified as an unknown conductor");
     }
 
     private static final class FakePort implements IElectricalPort {

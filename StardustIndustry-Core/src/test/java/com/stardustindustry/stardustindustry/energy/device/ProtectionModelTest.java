@@ -33,6 +33,28 @@ class ProtectionModelTest {
     }
 
     @Test
+    void requestedOverloadDoesNotTripWhenMeasuredCurrentIsBelowRating() {
+        ElectricalDeviceKind breaker = ElectricalDeviceKind.LV_BREAKER;
+        GridState state = new GridState(true, true, EnergyTier.LV,
+                WiringMode.THREE_PHASE_4_WIRE, breaker.ratedPowerWatts(),
+                breaker.ratedCurrentAmps() - 1.0, FaultKind.NONE,
+                breaker.ratedPowerWatts() * 2L, breaker.ratedPowerWatts(), 0L, 1.0);
+
+        assertFalse(ProtectionModel.shouldTrip(breaker, state));
+    }
+
+    @Test
+    void protectionCanCarryAnOverloadLongEnoughToMeasureAndTripIt() {
+        for (ElectricalDeviceKind kind : new ElectricalDeviceKind[] {
+                ElectricalDeviceKind.LV_BREAKER,
+                ElectricalDeviceKind.LV_FUSE_BOX
+        }) {
+            assertTrue(ProtectionModel.maximumThroughputWatts(kind) > kind.ratedPowerWatts(),
+                    kind.name());
+        }
+    }
+
+    @Test
     void ordinaryDevicesIgnoreProtectionSignals() {
         assertFalse(ProtectionModel.shouldTrip(ElectricalDeviceKind.FUEL_GENERATOR,
                 state(1_000_000.0, FaultKind.OVERCURRENT)));

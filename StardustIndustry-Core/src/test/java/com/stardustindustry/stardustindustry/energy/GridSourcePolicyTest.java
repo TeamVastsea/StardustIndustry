@@ -39,6 +39,19 @@ class GridSourcePolicyTest {
                         new TestPort(ElectricalPortRole.SOURCE, true, 1_000L))).kind());
     }
 
+    @Test
+    void closedDedicatedSourceIdentityDoesNotDisappearWhenOutputIsZero() {
+        TestPort emptySource = new TestPort(ElectricalPortRole.SOURCE, true, 0L);
+        TestPort storage = new TestPort(ElectricalPortRole.STORAGE, true, 1_000L);
+
+        GridSourcePolicy.Selection selected = GridSourcePolicy.select(List.of(storage, emptySource));
+        assertEquals(GridSourcePolicy.Kind.DEDICATED_SOURCE, selected.kind());
+        assertSame(emptySource, selected.voltageSource());
+
+        assertEquals(GridSourcePolicy.Kind.CONFLICT, GridSourcePolicy.select(List.of(
+                emptySource, new TestPort(ElectricalPortRole.SOURCE, true, 0L))).kind());
+    }
+
     private record TestPort(ElectricalPortRole electricalRole, boolean enabled,
                             long availablePowerWatts) implements IElectricalPort {
         @Override public EnergyTier tier() { return EnergyTier.LV; }

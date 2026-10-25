@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " CG",
+    "CRC",
+    "C  "
+  ],
+  "key": {
+    "C": { "tag": "c:ingots/copper" },
+    "G": { "tag": "c:glass_blocks" },
+    "R": { "item": "minecraft:redstone" }
+  },
+  "result": {
+    "id": "stardustindustry:electricians_meter",
+    "count": 1
+  }
+}

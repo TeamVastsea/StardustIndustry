@@ -21,7 +21,7 @@ package com.stardustindustry.stardustindustry.energy;
  *   <tr><th>class</th><th>holds up to</th><th>touching it</th></tr>
  *   <tr><td>class 1</td><td>LV (380 V)</td><td>harmless at LV; <b>light shock</b> on MV; lethal above</td></tr>
  *   <tr><td>class 2</td><td>MV (10 kV)</td><td>harmless at LV and MV; lethal at HV and above</td></tr>
- *   <tr><td>bare</td><td>—</td><td>lethal at any voltage above LV</td></tr>
+ *   <tr><td>bare</td><td>—</td><td>light shock on LV; lethal above LV</td></tr>
  * </table>
  *
  * <p>"Lethal" follows §6.11's rule — enough damage per tick that no player
@@ -37,7 +37,7 @@ public enum CableInsulation {
     CLASS_1("class_1", 380),
     /** Class 2: holds up to MV (10 kV). Harmless at LV and MV. */
     CLASS_2("class_2", 10_000),
-    /** No sheath at all: bare conductor, lethal above LV. */
+    /** No sheath at all: bare conductor, a light shock on LV and lethal above it. */
     BARE("bare", 0);
 
     private final String id;
@@ -93,14 +93,16 @@ public enum CableInsulation {
         if (protectsAt(volts)) {
             return Shock.NONE;
         }
+        if (this == BARE && volts <= EnergyTier.LV.volts()) {
+            return Shock.LIGHT;
+        }
         if (this == CLASS_1 && volts <= EnergyTier.MV.volts()) {
             // Class 1 is thin insulation: it is rated for LV, and MV leaks through
             // it. Annoying and painful, not fatal — the player is meant to learn
             // "this line needs a better sheath", not to die to find out.
             return Shock.LIGHT;
         }
-        // Anything else is a voltage far beyond what the sheath was made for:
-        // at HV and above, class 1 and class 2 are both effectively bare.
+        // Bare MV and every under-insulated HV/EHV line are immediately lethal.
         return Shock.LETHAL;
     }
 

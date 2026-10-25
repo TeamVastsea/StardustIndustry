@@ -33,6 +33,22 @@ public final class ModItems {
                     () -> new com.stardustindustry.stardustindustry.machine.tool.InstallationToolItem(
                             new Item.Properties().stacksTo(1)));
 
+    /** Read-only live electrical diagnostics for terminals, ports and machines. */
+    public static final DeferredItem<com.stardustindustry.stardustindustry.energy.ElectriciansMeterItem> ELECTRICIANS_METER =
+            ModRegistries.ITEMS.register("electricians_meter",
+                    () -> new com.stardustindustry.stardustindustry.energy.ElectriciansMeterItem(
+                            new Item.Properties().stacksTo(1)));
+
+    /** Consumable replacement links; a fuse box accepts only its own voltage tier. */
+    public static final DeferredItem<com.stardustindustry.stardustindustry.energy.device.FuseItem> LV_FUSE =
+            fuse("lv_fuse", com.stardustindustry.stardustindustry.energy.EnergyTier.LV);
+    public static final DeferredItem<com.stardustindustry.stardustindustry.energy.device.FuseItem> MV_FUSE =
+            fuse("mv_fuse", com.stardustindustry.stardustindustry.energy.EnergyTier.MV);
+    public static final DeferredItem<com.stardustindustry.stardustindustry.energy.device.FuseItem> HV_FUSE =
+            fuse("hv_fuse", com.stardustindustry.stardustindustry.energy.EnergyTier.HV);
+    public static final DeferredItem<com.stardustindustry.stardustindustry.energy.device.FuseItem> EHV_FUSE =
+            fuse("ehv_fuse", com.stardustindustry.stardustindustry.energy.EnergyTier.EHV);
+
     // ---- terminals ----
     //
     // One item per TERMINAL STYLE, not per voltage tier. The style carries the
@@ -126,6 +142,13 @@ public final class ModItems {
             }
         }
         return Collections.unmodifiableMap(map);
+    }
+
+    private static DeferredItem<com.stardustindustry.stardustindustry.energy.device.FuseItem> fuse(
+            String name, com.stardustindustry.stardustindustry.energy.EnergyTier tier) {
+        return ModRegistries.ITEMS.register(name,
+                () -> new com.stardustindustry.stardustindustry.energy.device.FuseItem(
+                        new Item.Properties().stacksTo(16), tier));
     }
 
     /** Every cable item, for the creative tab and for iteration. */

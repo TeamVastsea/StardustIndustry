@@ -162,7 +162,7 @@ public final class TerminalPlateShapes {
      * models), and letting the client's copy decide would put the hitbox and the
      * server's head on different boxes.</p>
      */
-    static ResourceManager serverResourceManager() {
+    public static ResourceManager serverResourceManager() {
         var server = net.neoforged.neoforge.server.ServerLifecycleHooks.getCurrentServer();
         return server == null ? null : server.getResourceManager();
     }

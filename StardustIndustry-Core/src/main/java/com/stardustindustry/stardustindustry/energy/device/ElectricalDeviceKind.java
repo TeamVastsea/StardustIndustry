@@ -34,9 +34,14 @@ public enum ElectricalDeviceKind {
     }
 
     ElectricalDeviceKind(EnergyTier tier, int ratedCurrentAmps, double efficiency) {
-        this(tier, null, com.stardustindustry.stardustindustry.energy.ElectricalUnits.powerWatts(
-                tier.volts(), ratedCurrentAmps),
+        this(tier, null, defaultWiring(tier).powerWatts(ratedCurrentAmps, tier),
                 efficiency, ratedCurrentAmps);
+    }
+
+    private static com.stardustindustry.stardustindustry.energy.WiringMode defaultWiring(EnergyTier tier) {
+        return tier == EnergyTier.LV
+                ? com.stardustindustry.stardustindustry.energy.WiringMode.THREE_PHASE_4_WIRE
+                : com.stardustindustry.stardustindustry.energy.WiringMode.THREE_PHASE_3_WIRE;
     }
 
     private ElectricalDeviceKind(EnergyTier lowTier, EnergyTier highTier, long ratedPowerWatts,

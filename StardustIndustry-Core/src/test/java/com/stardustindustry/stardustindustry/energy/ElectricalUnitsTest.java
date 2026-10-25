@@ -10,16 +10,25 @@ import com.stardustindustry.stardustindustry.machine.storage.StorageTier;
 
 class ElectricalUnitsTest {
     @Test
-    void usesDcEquivalentPowerEquationForEveryWiringMode() {
+    void usesBalancedPowerEquationForEveryWiringMode() {
         for (WiringMode wiring : WiringMode.values()) {
             int nominalVolts = wiring.nominalVolts(EnergyTier.LV);
-            long powerWatts = nominalVolts * 30L;
+            long powerWatts = wiring.powerWatts(30.0, EnergyTier.LV);
 
-            assertEquals(30.0, ElectricalUnits.currentAmps(powerWatts, nominalVolts),
-                    1.0e-9, wiring.name());
-            assertEquals(powerWatts, ElectricalUnits.powerWatts(nominalVolts, 30.0),
-                    wiring.name());
+            assertEquals(30.0, ElectricalUnits.currentAmps(powerWatts, nominalVolts, wiring),
+                    0.001, wiring.name());
         }
+    }
+
+    @Test
+    void balancedThreePhaseNeutralCarriesNoCurrent() {
+        long powerWatts = 10_000L;
+        WiringMode wiring = WiringMode.THREE_PHASE_4_WIRE;
+
+        assertEquals(15.193, wiring.lineCurrentAmps(powerWatts, EnergyTier.LV), 0.001);
+        assertEquals(15.193, wiring.conductorCurrentAmps(powerWatts, EnergyTier.LV, 0), 0.001);
+        assertEquals(15.193, wiring.conductorCurrentAmps(powerWatts, EnergyTier.LV, 2), 0.001);
+        assertEquals(0.0, wiring.conductorCurrentAmps(powerWatts, EnergyTier.LV, 3), 0.0);
     }
 
     @Test
@@ -37,12 +46,12 @@ class ElectricalUnitsTest {
     }
 
     @Test
-    void lineLossCountsEveryConductor() {
+    void lineLossCountsOnlyCurrentCarryingConductors() {
         assertEquals(200.0, ElectricalUnits.lineLossWatts(10.0, 1.0,
                 WiringMode.SINGLE_PHASE_2_WIRE), 1.0e-9);
         assertEquals(300.0, ElectricalUnits.lineLossWatts(10.0, 1.0,
                 WiringMode.THREE_PHASE_3_WIRE), 1.0e-9);
-        assertEquals(400.0, ElectricalUnits.lineLossWatts(10.0, 1.0,
+        assertEquals(300.0, ElectricalUnits.lineLossWatts(10.0, 1.0,
                 WiringMode.THREE_PHASE_4_WIRE), 1.0e-9);
     }
 
@@ -125,13 +134,15 @@ class ElectricalUnitsTest {
     }
 
     @Test
-    void storageRatingsUseDcEquivalentPower() {
+    void storageRatingsUseBalancedThreePhasePower() {
         for (StorageTier tier : StorageTier.values()) {
-            assertEquals(tier.amperage(), ElectricalUnits.currentAmps(tier.nominalPowerWatts(),
-                    tier.energyTier().volts()), 0.001,
+            WiringMode wiring = tier == StorageTier.LV
+                    ? WiringMode.THREE_PHASE_4_WIRE : WiringMode.THREE_PHASE_3_WIRE;
+            assertEquals(tier.amperage(), wiring.lineCurrentAmps(tier.nominalPowerWatts(),
+                    tier.energyTier()), 0.001,
                     tier.name());
         }
-        assertEquals(38_000L, StorageTier.LV.nominalPowerWatts());
+        assertEquals(65_818L, StorageTier.LV.nominalPowerWatts());
     }
 
     private static double heatAfterTicks(double ratio, int ticks) {

@@ -4,7 +4,11 @@ import com.stardustindustry.stardustindustry.multiblock.StructureDefinition;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.Level;
@@ -19,6 +23,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.DirectionProperty;
+import net.minecraft.world.phys.BlockHitResult;
 
 /**
  * Base block for every machine.
@@ -87,6 +92,39 @@ public abstract class MachineBlock extends Block implements EntityBlock {
         if (level.getBlockEntity(pos) instanceof MachineBlockEntity machine) {
             machine.onNeighborChanged();
         }
+    }
+
+    @Override
+    protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos, Player player,
+                                               BlockHitResult hit) {
+        if (!(level.getBlockEntity(pos) instanceof MachineBlockEntity machine)) {
+            return InteractionResult.PASS;
+        }
+        if (!level.isClientSide() && player instanceof net.minecraft.server.level.ServerPlayer serverPlayer) {
+            com.stardustindustry.stardustindustry.menu.ElectricalUi.openMachine(serverPlayer, machine);
+        }
+        return InteractionResult.sidedSuccess(level.isClientSide());
+    }
+
+    @Override
+    protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level, BlockPos pos,
+                                              Player player, InteractionHand hand, BlockHitResult hit) {
+        if (!(level.getBlockEntity(pos) instanceof MachineBlockEntity)) {
+            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+        }
+        if (hand == InteractionHand.MAIN_HAND
+                && com.stardustindustry.stardustindustry.energy.ElectriciansMeterItem
+                        .offhandMeterOwnsEmptyMainHand(
+                                player.getMainHandItem(), player.getOffhandItem())) {
+            return ItemInteractionResult.SKIP_DEFAULT_BLOCK_INTERACTION;
+        }
+        if (!(stack.getItem() instanceof com.stardustindustry.stardustindustry.energy.ElectriciansMeterItem)) {
+            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+        }
+        if (!level.isClientSide() && player instanceof net.minecraft.server.level.ServerPlayer serverPlayer) {
+            com.stardustindustry.stardustindustry.menu.ElectricalUi.openDiagnostic(serverPlayer, pos);
+        }
+        return ItemInteractionResult.SUCCESS;
     }
 
     @Override

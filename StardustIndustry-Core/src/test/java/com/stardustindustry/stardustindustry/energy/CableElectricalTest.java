@@ -2,7 +2,6 @@ package com.stardustindustry.stardustindustry.energy;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.HashMap;
@@ -15,7 +14,7 @@ import net.minecraft.core.BlockPos;
 
 class CableElectricalTest {
     @Test
-    void cableRunKeyIgnoresColorAndEndpointDirection() {
+    void cableRunIdUsesOnlyCanonicalEndpointPair() {
         TerminalEndpoint a = new TerminalEndpoint(new BlockPos(-2, 4, 8), 1);
         TerminalEndpoint b = new TerminalEndpoint(new BlockPos(7, 4, 8), 3);
         CableConnection cable = new CableConnection(CableAmpacity.A150, CableInsulation.CLASS_2,
@@ -23,14 +22,11 @@ class CableElectricalTest {
         CableConnection reversedAndRecolored = new CableConnection(CableAmpacity.A150,
                 CableInsulation.CLASS_2, CableColor.ofDyeIndex(14), b, a);
 
-        assertEquals(cable.runKey(), cable.withColor(CableColor.ofDyeIndex(11)).runKey());
-        assertEquals(cable.runKey(), reversedAndRecolored.runKey());
-        assertEquals(new CableRunKey(CableAmpacity.A150, CableInsulation.CLASS_2, a, b),
-                new CableRunKey(CableAmpacity.A150, CableInsulation.CLASS_2, b, a));
-        assertNotEquals(cable.runKey(), new CableRunKey(CableAmpacity.A500,
-                CableInsulation.CLASS_2, a, b));
-        assertNotEquals(cable.runKey(), new CableRunKey(CableAmpacity.A150,
-                CableInsulation.CLASS_1, a, b));
+        assertEquals(cable.runId(), cable.withColor(CableColor.ofDyeIndex(11)).runId());
+        assertEquals(cable.runId(), reversedAndRecolored.runId());
+        assertEquals(new CableRunId(a, b), new CableRunId(b, a));
+        assertEquals(cable.runId(), new CableConnection(CableAmpacity.A500,
+                CableInsulation.CLASS_1, CableColor.UNDYED, a, b).runId());
     }
 
     @Test
@@ -40,7 +36,7 @@ class CableElectricalTest {
         CableConnection cable = new CableConnection(CableAmpacity.A150, CableInsulation.CLASS_2,
                 CableColor.ofDyeIndex(14), a, b);
         CableConnection recolored = cable.withColor(CableColor.ofDyeIndex(11));
-        Map<CableRunKey, CableThermalModel.State> thermalStates = new HashMap<>();
+        Map<CableRunId, CableThermalModel.State> thermalStates = new HashMap<>();
         CableThermalModel.State state = CableThermalModel.State.COLD;
 
         for (int tick = 1; tick < 60; tick++) {
@@ -52,7 +48,7 @@ class CableElectricalTest {
         state = ElectricalGridService.advanceCableThermalState(thermalStates, cable, 5.0);
 
         assertTrue(CableThermalModel.failed(state));
-        assertFalse(thermalStates.containsKey(cable.runKey()));
+        assertFalse(thermalStates.containsKey(cable.runId()));
     }
 
     @Test

@@ -30,5 +30,19 @@ public class Config {
             .comment("Smallest size a tank may be along one axis, in blocks. Must be at least 3 (a 2x2x2 tank holds nothing).")
             .defineInRange("tankMinSize", 3, 3, 64);
 
+    // ---- electrical safety ----
+
+    public static final ModConfigSpec.BooleanValue ELECTRIC_SHOCKS_ENABLED = BUILDER
+            .comment("Whether players can be shocked by energized cables whose insulation is inadequate.")
+            .define("electricShocksEnabled", true);
+
+    public static final ModConfigSpec.DoubleValue LIGHT_SHOCK_DAMAGE = BUILDER
+            .comment("Damage dealt by a survivable cable shock (1 point = half a heart). It cannot deal the final point of health.")
+            .defineInRange("lightShockDamage", 4.0, 0.0, 1_000_000.0);
+
+    public static final ModConfigSpec.DoubleValue LETHAL_SHOCK_DAMAGE = BUILDER
+            .comment("Damage dealt by a lethal cable shock. The lethal damage type bypasses normal protection.")
+            .defineInRange("lethalShockDamage", 1_000.0, 0.0, 1_000_000.0);
+
     static final ModConfigSpec SPEC = BUILDER.build();
 }

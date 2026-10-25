@@ -11,28 +11,31 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.PriorityQueue;
 import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.function.Function;
 import java.util.function.LongFunction;
 import java.util.function.LongUnaryOperator;
+import java.util.function.Predicate;
 
 import com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlockEntity;
 import com.stardustindustry.stardustindustry.registry.ModCapabilityTypes;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
 
 /** Builds conductor components from loaded terminal racks and solves each active circuit once per tick. */
 public final class ElectricalGridService {
+    private static final int SOURCE_FLOW_SETTLE_ITERATIONS = 16;
     private static final Map<Level, Set<BlockPos>> RACKS = new WeakHashMap<>();
     private static final Map<Level, GridEnergyTransaction.Remainders> ENERGY_REMAINDERS = new WeakHashMap<>();
-    private static final Map<Level, Map<CableRunKey, CableThermalModel.State>> CABLE_THERMAL_STATE =
-            new WeakHashMap<>();
     private static final Map<Level, Set<IElectricalPort>> TRACKED_PORTS = new WeakHashMap<>();
+    private static final Map<Level, Map<CableRunId, EnergizedCable>> ENERGIZED_CABLES = new WeakHashMap<>();
 
     private ElectricalGridService() {}
 
@@ -52,7 +55,7 @@ public final class ElectricalGridService {
         if (positions.isEmpty()) {
             RACKS.remove(level);
             ENERGY_REMAINDERS.remove(level);
-            CABLE_THERMAL_STATE.remove(level);
+            ENERGIZED_CABLES.remove(level);
             resetTrackedPorts(level);
         }
     }
@@ -60,7 +63,24 @@ public final class ElectricalGridService {
     @SubscribeEvent
     public static void onLevelTick(LevelTickEvent.Post event) {
         Level level = event.getLevel();
-        if (!level.isClientSide()) solve(level);
+        if (!level.isClientSide()) {
+            solve(level);
+            if (level instanceof ServerLevel serverLevel) {
+                CableShockService.tick(serverLevel, energizedCables(level));
+            }
+        }
+    }
+
+    /** Immutable live-voltage snapshot from the most recent solve. */
+    public static Collection<EnergizedCable> energizedCables(Level level) {
+        Map<CableRunId, EnergizedCable> cables = ENERGIZED_CABLES.get(level);
+        return cables == null ? List.of() : cables.values();
+    }
+
+    /** Live measurements for one physical run, or {@code null} when it is not energized. */
+    public static EnergizedCable energizedCable(Level level, CableRunId runId) {
+        Map<CableRunId, EnergizedCable> cables = ENERGIZED_CABLES.get(level);
+        return cables == null || runId == null ? null : cables.get(runId);
     }
 
     private static void solve(Level level) {
@@ -68,9 +88,11 @@ public final class ElectricalGridService {
         if (registered == null || registered.isEmpty()) {
             resetTrackedPorts(level);
             ENERGY_REMAINDERS.remove(level);
-            CABLE_THERMAL_STATE.remove(level);
+            ENERGIZED_CABLES.remove(level);
             return;
         }
+
+        Map<CableRunId, EnergizedCable> energizedCables = new LinkedHashMap<>();
 
         List<TerminalMountBlockEntity> racks = new ArrayList<>();
         registered.removeIf(pos -> {
@@ -85,10 +107,13 @@ public final class ElectricalGridService {
                 ElectricalGridService::compareBlockPos));
 
         DisjointSet conductors = new DisjointSet();
+        Set<TerminalEndpoint> loadedEndpoints = new HashSet<>();
         Set<CableConnection> collectedCables = new LinkedHashSet<>();
         for (TerminalMountBlockEntity rack : racks) {
             for (int cell : rack.terminalCells()) {
-                conductors.add(new TerminalEndpoint(rack.getBlockPos(), cell));
+                TerminalEndpoint endpoint = new TerminalEndpoint(rack.getBlockPos(), cell);
+                conductors.add(endpoint);
+                loadedEndpoints.add(endpoint);
             }
             collectedCables.addAll(rack.cables());
         }
@@ -100,8 +125,12 @@ public final class ElectricalGridService {
                 conductors.union(cable.a(), cable.b());
             }
         }
+        Set<TerminalEndpoint> unloadedConductorRoots = loadedEndpointsWithUnloadedPeers(
+                cables, loadedEndpoints, level::isLoaded).stream()
+                .map(conductors::find)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
 
-        Map<IElectricalPort, PortAccumulator> groupedPorts = new IdentityHashMap<>();
+        Map<Object, PortAccumulator> groupedPorts = new LinkedHashMap<>();
         for (TerminalMountBlockEntity rack : racks) {
             BlockPos portPos = rack.getBlockPos().relative(rack.facing());
             IElectricalPort port = level.getCapability(ModCapabilityTypes.ELECTRICAL_PORT, portPos,
@@ -111,13 +140,13 @@ public final class ElectricalGridService {
                     .sorted()
                     .map(cell -> new TerminalEndpoint(rack.getBlockPos(), cell))
                     .toList();
-            PortAccumulator accumulator = groupedPorts.computeIfAbsent(port,
+            Object groupKey = Objects.requireNonNull(port.portGroup(), "portGroup");
+            PortAccumulator accumulator = groupedPorts.computeIfAbsent(groupKey,
                     ignored -> new PortAccumulator(port));
-            accumulator.tierValid &= rack.tier() == port.tier();
-            accumulator.endpoints.addAll(endpoints);
+            accumulator.add(port, rack.tier(), endpoints);
         }
         List<PortBinding> bindings = groupedPorts.values().stream()
-                .map(accumulator -> bind(accumulator, conductors))
+                .map(accumulator -> bind(accumulator, conductors, unloadedConductorRoots))
                 .sorted(ElectricalGridService::compareBindings)
                 .toList();
         GridEnergyTransaction.Remainders remainders = ENERGY_REMAINDERS.get(level);
@@ -144,20 +173,102 @@ public final class ElectricalGridService {
                 buildFaultUpstreamCircuits(bindings, circuits);
         Set<PortBinding> sourceConflicts = findSourceConflicts(bindings);
         GridTransferLedger transfers = new GridTransferLedger();
-        Map<CableRunKey, CableLoad> cableLoads = new LinkedHashMap<>();
+        Map<CableRunId, CableLoad> cableLoads = new LinkedHashMap<>();
         List<List<PortBinding>> circuitList = new ArrayList<>(circuits.values());
         List<List<IElectricalPort>> circuitPorts = circuitList.stream()
                 .map(circuit -> circuit.stream().map(PortBinding::port).toList())
                 .toList();
-        for (int index : circuitSolveOrder(circuitPorts)) {
+        List<Integer> solveOrder = circuitSolveOrder(circuitPorts);
+        preparePassThroughDemands(level, circuitList, solveOrder, cables, conductors);
+        for (int index : solveOrder) {
             solveCircuit(level, circuitList.get(index), cables, conductors,
-                    sourceConflicts, transfers, cableLoads, faultUpstreamCircuits);
+                    sourceConflicts, transfers, cableLoads, faultUpstreamCircuits,
+                    energizedCables);
         }
         updateUnmatchedPorts(incomplete, bindings, sourceConflicts, faultUpstreamCircuits);
         applyCableHeat(level, cableLoads.values());
-        Set<CableRunKey> connectedCableRuns = new HashSet<>();
-        cables.forEach(cable -> connectedCableRuns.add(cable.runKey()));
-        coolInactiveCables(level, connectedCableRuns, cableLoads.keySet());
+        Set<CableRunId> connectedCableRuns = new HashSet<>();
+        cables.stream()
+                .filter(cable -> bothEndpointsPresent(cable, loadedEndpoints))
+                .forEach(cable -> connectedCableRuns.add(cable.runId()));
+        Set<CableRunId> activeCableRuns = new HashSet<>();
+        cableLoads.values().forEach(load -> activeCableRuns.add(load.cable().runId()));
+        coolInactiveCables(level, connectedCableRuns, activeCableRuns);
+        ENERGIZED_CABLES.put(level,
+                Collections.unmodifiableMap(new LinkedHashMap<>(energizedCables)));
+    }
+
+    /**
+     * Propagates receiver demand from downstream circuits to in-line equipment before any
+     * transaction commits. Reverse dependency order gives a transformer or protection input the
+     * fully settled demand of every downstream pass-through stage in the same game tick.
+     */
+    private static void preparePassThroughDemands(Level level,
+                                                  List<List<PortBinding>> circuits,
+                                                  List<Integer> solveOrder,
+                                                  List<CableConnection> allCables,
+                                                  DisjointSet conductors) {
+        for (List<PortBinding> circuit : circuits) {
+            circuit.stream()
+                    .filter(binding -> binding.port().electricalRole() == ElectricalPortRole.SOURCE)
+                    .filter(binding -> binding.port().allowsSameTickPassThrough())
+                    .forEach(binding -> binding.port().preparePassThroughDemandWatts(0L));
+        }
+
+        for (int orderIndex = solveOrder.size() - 1; orderIndex >= 0; orderIndex--) {
+            List<PortBinding> circuit = circuits.get(solveOrder.get(orderIndex));
+            List<PortBinding> passThroughSources = circuit.stream()
+                    .filter(binding -> binding.port().electricalRole() == ElectricalPortRole.SOURCE)
+                    .filter(binding -> binding.port().allowsSameTickPassThrough())
+                    .filter(binding -> binding.port().enabled())
+                    .toList();
+            long dedicatedSourceCount = circuit.stream()
+                    .filter(binding -> binding.port().electricalRole() == ElectricalPortRole.SOURCE)
+                    .filter(binding -> binding.port().enabled())
+                    .count();
+            if (passThroughSources.size() != 1 || dedicatedSourceCount != 1L) continue;
+
+            PortBinding source = passThroughSources.getFirst();
+            List<PortBinding> compatible = circuit.stream()
+                    .filter(binding -> binding.port().enabled())
+                    .filter(binding -> binding.port().wiring() == source.port().wiring())
+                    .filter(binding -> binding.port().tier() == source.port().tier())
+                    .toList();
+            List<PowerTarget> loads = requestedPowerTargets(compatible,
+                    ElectricalPortRole.LOAD);
+            List<PowerTarget> storageReceivers = requestedPowerTargets(compatible,
+                    ElectricalPortRole.STORAGE);
+            long loadDemandWatts = totalTargetWatts(loads);
+            long requestedWatts = saturatingAdd(loadDemandWatts,
+                    totalTargetWatts(storageReceivers));
+            if (requestedWatts <= 0L) continue;
+
+            CircuitTopology topology = buildTopology(level, source, allCables, conductors);
+            if (!topology.supported()) continue;
+            CircuitPowerPlan plan = planPower(requestedWatts,
+                    List.of(new PowerTarget(source, source.port().maxPowerWatts())),
+                    delivered -> prioritizedReceiverFlows(delivered, loadDemandWatts,
+                            loads, storageReceivers),
+                    false, topology, source.port().wiring(), source.port().tier());
+            source.port().preparePassThroughDemandWatts(
+                    flowWatts(plan.sourceDraws(), source));
+        }
+    }
+
+    private static List<PowerTarget> requestedPowerTargets(List<PortBinding> bindings,
+                                                            ElectricalPortRole role) {
+        Set<Object> seen = new HashSet<>();
+        List<PowerTarget> targets = new ArrayList<>();
+        for (PortBinding binding : bindings) {
+            if (binding.port().electricalRole() != role
+                    || !seen.add(binding.port().energyAccount())) {
+                continue;
+            }
+            long watts = Math.min(Math.max(0L, binding.port().requestedPowerWatts()),
+                    Math.max(0L, binding.port().maxPowerWatts()));
+            if (watts > 0L) targets.add(new PowerTarget(binding, watts));
+        }
+        return List.copyOf(targets);
     }
 
     static boolean hasCompleteConductorBinding(WiringMode wiring, int endpointCount,
@@ -166,7 +277,8 @@ public final class ElectricalGridService {
         return tierValid && endpointCount == required && conductorRootCount == required;
     }
 
-    private static PortBinding bind(PortAccumulator accumulator, DisjointSet conductors) {
+    private static PortBinding bind(PortAccumulator accumulator, DisjointSet conductors,
+                                    Set<TerminalEndpoint> unloadedConductorRoots) {
         List<TerminalEndpoint> endpoints = accumulator.endpoints.stream().distinct().sorted().toList();
         Map<TerminalEndpoint, TerminalEndpoint> endpointByRoot = new LinkedHashMap<>();
         for (TerminalEndpoint endpoint : endpoints) {
@@ -175,8 +287,10 @@ public final class ElectricalGridService {
         List<TerminalEndpoint> roots = endpointByRoot.keySet().stream().sorted().toList();
         Map<TerminalEndpoint, TerminalEndpoint> sortedEndpointsByRoot = new LinkedHashMap<>();
         roots.forEach(root -> sortedEndpointsByRoot.put(root, endpointByRoot.get(root)));
+        boolean unloadedConductor = roots.stream().anyMatch(unloadedConductorRoots::contains);
         return new PortBinding(accumulator.port, endpoints, roots,
-                Collections.unmodifiableMap(sortedEndpointsByRoot), accumulator.tierValid);
+                Collections.unmodifiableMap(sortedEndpointsByRoot), accumulator.tierValid,
+                List.copyOf(accumulator.members), unloadedConductor);
     }
 
     /** Maps an in-line device's output source to the exact circuit feeding its input. */
@@ -191,7 +305,7 @@ public final class ElectricalGridService {
             Object account = output.port().energyAccount();
             for (PortBinding input : bindings) {
                 if (input.port().electricalRole() != ElectricalPortRole.LOAD
-                        || input.port().energyAccount() != account) {
+                        || !Objects.equals(input.port().energyAccount(), account)) {
                     continue;
                 }
                 List<PortBinding> circuit = circuits.get(new CircuitKey(input.roots()));
@@ -206,7 +320,7 @@ public final class ElectricalGridService {
 
     private static void resetPortsNoLongerPresent(Level level, List<PortBinding> bindings) {
         Set<IElectricalPort> current = Collections.newSetFromMap(new WeakHashMap<>());
-        bindings.forEach(binding -> current.add(binding.port()));
+        bindings.forEach(binding -> current.addAll(binding.members()));
         Set<IElectricalPort> previous = TRACKED_PORTS.put(level, current);
         if (previous == null) return;
         for (IElectricalPort port : previous) {
@@ -227,8 +341,9 @@ public final class ElectricalGridService {
     private static void solveCircuit(Level level, List<PortBinding> bindings,
                                      List<CableConnection> allCables, DisjointSet conductors,
                                      Set<PortBinding> sourceConflicts, GridTransferLedger transfers,
-                                     Map<CableRunKey, CableLoad> cableLoads,
-                                     Map<IElectricalPort, List<IElectricalPort>> faultUpstreamCircuits) {
+                                     Map<CableRunId, CableLoad> cableLoads,
+                                     Map<IElectricalPort, List<IElectricalPort>> faultUpstreamCircuits,
+                                     Map<CableRunId, EnergizedCable> energizedCables) {
         List<PortBinding> closedSources = bindings.stream()
                 .filter(binding -> binding.port().electricalRole() == ElectricalPortRole.SOURCE)
                 .filter(binding -> binding.port().enabled())
@@ -239,21 +354,24 @@ public final class ElectricalGridService {
 
         for (PortBinding binding : bindings) {
             if (!binding.port().enabled()) {
-                binding.port().updateGridState(GridState.offline(binding.port().wiring(),
+                updateGridState(binding, GridState.offline(binding.port().wiring(),
                         FaultKind.OPEN_SWITCH, anyClosedSource));
             }
         }
         List<PortBinding> enabled = bindings.stream().filter(binding -> binding.port().enabled()).toList();
         if (sourceSelection.kind() == GridSourcePolicy.Kind.NONE) {
-            enabled.forEach(binding -> binding.port().updateGridState(GridState.offline(
+            enabled.forEach(binding -> updateGridState(binding, GridState.offline(
                     binding.port().wiring(), FaultKind.UNDERVOLTAGE, anyClosedSource)));
             return;
         }
         if (sourceSelection.kind() == GridSourcePolicy.Kind.CONFLICT) {
-            PortBinding first = closedSources.stream()
-                    .filter(binding -> binding.port().availablePowerWatts() > 0L)
-                    .findFirst().orElseThrow();
-            enabled.forEach(binding -> binding.port().updateGridState(new GridState(true, true,
+            PortBinding first = closedSources.getFirst();
+            CircuitTopology topology = buildTopology(level, first, allCables, conductors);
+            int highestVolts = closedSources.stream()
+                    .mapToInt(binding -> binding.port().wiring().nominalVolts(binding.port().tier()))
+                    .max().orElse(0);
+            recordEnergizedCables(topology, highestVolts, Map.of(), energizedCables);
+            enabled.forEach(binding -> updateGridState(binding, new GridState(true, true,
                     first.port().tier(), first.port().wiring(), 0L, 0.0,
                     FaultKind.MULTIPLE_GRID_SOURCES)));
             return;
@@ -262,16 +380,19 @@ public final class ElectricalGridService {
         PortBinding source = bindings.stream()
                 .filter(binding -> binding.port() == sourceSelection.voltageSource())
                 .findFirst().orElseThrow();
+        boolean storageIsland = sourceSelection.kind() == GridSourcePolicy.Kind.STORAGE_ISLAND;
+        EnergyTier supplyTier = source.port().tier();
+        WiringMode supplyWiring = source.port().wiring();
+        int nominalVolts = supplyWiring.nominalVolts(supplyTier);
+        CircuitTopology topology = buildTopology(level, source, allCables, conductors);
+        recordEnergizedCables(topology, nominalVolts, Map.of(), energizedCables);
         if (sourceSelection.kind() == GridSourcePolicy.Kind.DEDICATED_SOURCE
                 && sourceConflicts.contains(source)) {
-            enabled.forEach(binding -> binding.port().updateGridState(new GridState(true, true,
+            enabled.forEach(binding -> updateGridState(binding, new GridState(true, true,
                     source.port().tier(), source.port().wiring(), 0L, 0.0,
                     FaultKind.MULTIPLE_GRID_SOURCES)));
             return;
         }
-        boolean storageIsland = sourceSelection.kind() == GridSourcePolicy.Kind.STORAGE_ISLAND;
-        EnergyTier supplyTier = source.port().tier();
-        WiringMode supplyWiring = source.port().wiring();
         List<PortBinding> compatible = new ArrayList<>();
         for (PortBinding binding : enabled) {
             if (binding.port().wiring() != supplyWiring) {
@@ -281,16 +402,14 @@ public final class ElectricalGridService {
                 updateFaultedPort(binding, source, new GridState(true, true, supplyTier, supplyWiring,
                         0L, 0.0, FaultKind.OVERVOLTAGE), faultUpstreamCircuits);
             } else if (binding.port().tier() != supplyTier) {
-                binding.port().updateGridState(new GridState(true, true, supplyTier, supplyWiring,
+                updateGridState(binding, new GridState(true, true, supplyTier, supplyWiring,
                         0L, 0.0, FaultKind.UNDERVOLTAGE));
             } else {
                 compatible.add(binding);
             }
         }
-
-        CircuitTopology topology = buildTopology(level, source, allCables, conductors);
         if (!topology.supported()) {
-            compatible.forEach(binding -> binding.port().updateGridState(new GridState(true, true,
+            compatible.forEach(binding -> updateGridState(binding, new GridState(true, true,
                     supplyTier, supplyWiring, 0L, 0.0, FaultKind.UNSUPPORTED_TOPOLOGY)));
             recordCableLoads(topology.cables(), Map.of(), cableLoads);
             return;
@@ -308,8 +427,6 @@ public final class ElectricalGridService {
         List<PowerTarget> storageSources = uniquePowerTargets(storageBindings, transfers, true);
         List<PowerTarget> storageReceivers = uniquePowerTargets(storageBindings, transfers, false);
         long storageDemandWatts = totalTargetWatts(storageReceivers);
-        int nominalVolts = supplyWiring.nominalVolts(supplyTier);
-
         List<PowerTarget> primarySource = sourceWatts > 0L
                 ? List.of(new PowerTarget(source, sourceWatts)) : List.of();
         CircuitPowerPlan plan;
@@ -317,35 +434,36 @@ public final class ElectricalGridService {
         if (storageIsland) {
             requestedCircuitWatts = demandWatts;
             plan = planPower(demandWatts, storageSources,
-                    delivered -> allocateFlows(delivered, loads), topology,
-                    nominalVolts);
+                    delivered -> allocateFlows(delivered, loads), false, topology,
+                    supplyWiring, supplyTier);
         } else {
             CircuitPowerPlan primaryLoadPlan = planPower(demandWatts, primarySource,
-                    delivered -> allocateFlows(delivered, loads), topology,
-                    nominalVolts);
+                    delivered -> allocateFlows(delivered, loads), false, topology,
+                    supplyWiring, supplyTier);
             if (primaryLoadPlan.deliveredWatts() == demandWatts) {
                 long requestedWithCharge = saturatingAdd(demandWatts, storageDemandWatts);
                 requestedCircuitWatts = requestedWithCharge;
                 plan = planPower(requestedWithCharge, primarySource,
                         delivered -> prioritizedReceiverFlows(delivered, demandWatts,
-                                loads, storageReceivers), topology, nominalVolts);
+                                loads, storageReceivers), false, topology, supplyWiring, supplyTier);
             } else {
                 requestedCircuitWatts = demandWatts;
                 List<PowerTarget> allSources = new ArrayList<>(primarySource);
                 allSources.addAll(storageSources);
                 plan = planPower(demandWatts, allSources,
-                        delivered -> allocateFlows(delivered, loads), topology,
-                        nominalVolts);
+                        delivered -> allocateFlows(delivered, loads), true, topology,
+                        supplyWiring, supplyTier);
             }
         }
 
         GridEnergyTransaction transaction = new GridEnergyTransaction(
                 ENERGY_REMAINDERS.computeIfAbsent(level,
-                        ignored -> new GridEnergyTransaction.Remainders()));
+                        ignored -> new GridEnergyTransaction.Remainders(
+                                ElectricalNetworkSavedData.get((ServerLevel) level))));
         plan.sourceDraws().forEach(flow -> transaction.extract(flow.binding().port(), flow.watts()));
         plan.receivers().forEach(flow -> transaction.receive(flow.binding().port(), flow.watts()));
         if (!transaction.commit()) {
-            compatible.forEach(binding -> binding.port().updateGridState(new GridState(true, true,
+            compatible.forEach(binding -> updateGridState(binding, new GridState(true, true,
                     supplyTier, supplyWiring, 0L, 0.0, FaultKind.UNDERVOLTAGE)));
             recordCableLoads(topology.cables(), Map.of(), cableLoads);
             return;
@@ -353,9 +471,11 @@ public final class ElectricalGridService {
 
         plan.sourceDraws().forEach(flow -> transfers.recordExtracted(flow.binding().port(), flow.watts()));
         plan.receivers().forEach(flow -> transfers.recordReceived(flow.binding().port(), flow.watts()));
-        updatePortStates(compatible, source, loads, plan, supplyTier, supplyWiring, nominalVolts,
-                requestedCircuitWatts, sourceWatts);
+        updatePortStates(compatible, source, loads, plan, supplyTier, supplyWiring,
+                requestedCircuitWatts);
         recordCableLoads(topology.cables(), plan.currentAmpsByCable(), cableLoads);
+        recordEnergizedCables(topology, nominalVolts, plan.currentAmpsByCable(),
+                energizedCables);
     }
 
     private static CircuitTopology buildTopology(Level level, PortBinding source,
@@ -391,46 +511,110 @@ public final class ElectricalGridService {
 
     private static CircuitPowerPlan planPower(long requestedWatts, List<PowerTarget> sources,
                                               LongFunction<List<PowerFlow>> receiverFactory,
-                                              CircuitTopology topology, int nominalVolts) {
+                                              boolean primarySourceFirst,
+                                              CircuitTopology topology, WiringMode wiring,
+                                              EnergyTier tier) {
         long capacityWatts = totalTargetWatts(sources);
         LongFunction<FlowSnapshot> snapshotAt = delivered -> flowSnapshot(delivered, sources,
-                receiverFactory.apply(delivered), topology, nominalVolts);
+                receiverFactory.apply(delivered), topology, primarySourceFirst, wiring, tier);
         long deliveredWatts = deliverablePower(requestedWatts, capacityWatts, delivered -> {
             FlowSnapshot snapshot = snapshotAt.apply(delivered);
             return snapshot.supported() ? snapshot.lossWatts() : Long.MAX_VALUE;
         });
         FlowSnapshot snapshot = snapshotAt.apply(deliveredWatts);
         if (!snapshot.supported()) return CircuitPowerPlan.empty();
-        long requiredSourceWatts = saturatingAdd(deliveredWatts, snapshot.lossWatts());
-        List<PowerFlow> sourceDraws = allocateFlows(requiredSourceWatts, sources);
-        return new CircuitPowerPlan(deliveredWatts, snapshot.lossWatts(), sourceDraws,
+        return new CircuitPowerPlan(deliveredWatts, snapshot.lossWatts(), snapshot.sourceDraws(),
                 snapshot.sourceInjections(), snapshot.receivers(), snapshot.currentAmpsByCable());
     }
 
     private static FlowSnapshot flowSnapshot(long deliveredWatts, List<PowerTarget> sources,
                                              List<PowerFlow> receivers, CircuitTopology topology,
-                                             int nominalVolts) {
-        List<PowerFlow> sourceInjections = allocateFlows(deliveredWatts, sources);
+                                             boolean primarySourceFirst, WiringMode wiring,
+                                             EnergyTier tier) {
+        List<PowerFlow> sourceDraws = allocateSourceFlows(
+                deliveredWatts, sources, primarySourceFirst);
+        FlowSnapshot snapshot = FlowSnapshot.unsupported();
+        for (int iteration = 0; iteration < SOURCE_FLOW_SETTLE_ITERATIONS; iteration++) {
+            List<PowerFlow> sourceInjections = topologySourceFlows(deliveredWatts, sourceDraws);
+            snapshot = solveFlowSnapshot(sourceDraws, sourceInjections, receivers,
+                    topology, wiring, tier);
+            if (!snapshot.supported()) return snapshot;
+
+            long requiredSourceWatts = saturatingAdd(deliveredWatts, snapshot.lossWatts());
+            List<PowerFlow> nextSourceDraws = allocateSourceFlows(
+                    requiredSourceWatts, sources, primarySourceFirst);
+            if (samePowerFlows(sourceDraws, nextSourceDraws)) {
+                return snapshot;
+            }
+            sourceDraws = nextSourceDraws;
+        }
+
+        List<PowerFlow> sourceInjections = topologySourceFlows(deliveredWatts, sourceDraws);
+        return solveFlowSnapshot(sourceDraws, sourceInjections, receivers,
+                topology, wiring, tier);
+    }
+
+    private static FlowSnapshot solveFlowSnapshot(List<PowerFlow> sourceDraws,
+                                                  List<PowerFlow> sourceInjections,
+                                                  List<PowerFlow> receivers,
+                                                  CircuitTopology topology,
+                                                  WiringMode wiring, EnergyTier tier) {
         Map<TerminalEndpoint, Double> nodeCurrent = new HashMap<>();
         for (PowerFlow source : sourceInjections) {
-            addPortCurrent(nodeCurrent, source.binding(),
-                    ElectricalUnits.currentAmps(source.watts(), nominalVolts));
+            addPortCurrent(nodeCurrent, source.binding(), wiring, tier, source.watts(), 1.0);
         }
         for (PowerFlow receiver : receivers) {
-            addPortCurrent(nodeCurrent, receiver.binding(),
-                    -ElectricalUnits.currentAmps(receiver.watts(), nominalVolts));
+            addPortCurrent(nodeCurrent, receiver.binding(), wiring, tier, receiver.watts(), -1.0);
         }
         RadialCableFlow.Result<CableConnection> result = RadialCableFlow.solve(
                 topology.conductorRoots(), topology.branches(), nodeCurrent);
         if (!result.supported()) return FlowSnapshot.unsupported();
-        return new FlowSnapshot(true, roundedLoss(result.lossWatts()), sourceInjections,
-                List.copyOf(receivers), result.currentAmpsByEdge());
+        return new FlowSnapshot(true, roundedLoss(result.lossWatts()), sourceDraws,
+                sourceInjections, List.copyOf(receivers), result.currentAmpsByEdge());
+    }
+
+    /**
+     * Converts actual source draw shares (which include line loss) into balanced topology
+     * injections whose sum is the useful power delivered to receivers.
+     */
+    static List<Long> topologyInjectionShares(long deliveredWatts, List<Long> sourceDrawWatts) {
+        return PowerAllocator.proportional(Math.max(0L, deliveredWatts), sourceDrawWatts);
+    }
+
+    private static List<PowerFlow> topologySourceFlows(long deliveredWatts,
+                                                       List<PowerFlow> sourceDraws) {
+        List<Long> shares = topologyInjectionShares(deliveredWatts,
+                sourceDraws.stream().map(PowerFlow::watts).toList());
+        List<PowerFlow> injections = new ArrayList<>();
+        for (int index = 0; index < sourceDraws.size(); index++) {
+            long share = shares.get(index);
+            if (share > 0L) {
+                injections.add(new PowerFlow(sourceDraws.get(index).binding(), share));
+            }
+        }
+        return List.copyOf(injections);
+    }
+
+    private static boolean samePowerFlows(List<PowerFlow> first, List<PowerFlow> second) {
+        if (first.size() != second.size()) return false;
+        for (int index = 0; index < first.size(); index++) {
+            PowerFlow a = first.get(index);
+            PowerFlow b = second.get(index);
+            if (!a.binding().equals(b.binding()) || a.watts() != b.watts()) return false;
+        }
+        return true;
     }
 
     private static void addPortCurrent(Map<TerminalEndpoint, Double> nodeCurrent,
-                                       PortBinding binding, double currentAmps) {
-        for (TerminalEndpoint endpoint : binding.endpointsByRoot().values()) {
-            nodeCurrent.merge(endpoint, currentAmps, Double::sum);
+                                       PortBinding binding, WiringMode wiring, EnergyTier tier,
+                                       long powerWatts, double direction) {
+        List<TerminalEndpoint> conductors = new ArrayList<>(binding.endpointsByRoot().values());
+        if (conductors.size() != wiring.requiredConductors()) {
+            throw new IllegalArgumentException("binding conductor count does not match " + wiring);
+        }
+        for (int index = 0; index < conductors.size(); index++) {
+            double current = wiring.conductorCurrentAmps(powerWatts, tier, index) * direction;
+            nodeCurrent.merge(conductors.get(index), current, Double::sum);
         }
     }
 
@@ -445,8 +629,22 @@ public final class ElectricalGridService {
     }
 
     private static List<PowerFlow> allocateFlows(long availableWatts, List<PowerTarget> targets) {
-        List<Long> shares = PowerAllocator.proportional(availableWatts,
-                targets.stream().map(PowerTarget::watts).toList());
+        return allocateFlows(targets,
+                PowerAllocator.proportional(availableWatts,
+                        targets.stream().map(PowerTarget::watts).toList()));
+    }
+
+    private static List<PowerFlow> allocateSourceFlows(long availableWatts,
+                                                       List<PowerTarget> targets,
+                                                       boolean primarySourceFirst) {
+        List<Long> requests = targets.stream().map(PowerTarget::watts).toList();
+        List<Long> shares = primarySourceFirst
+                ? PowerAllocator.primaryThenProportional(availableWatts, requests)
+                : PowerAllocator.proportional(availableWatts, requests);
+        return allocateFlows(targets, shares);
+    }
+
+    private static List<PowerFlow> allocateFlows(List<PowerTarget> targets, List<Long> shares) {
         List<PowerFlow> flows = new ArrayList<>();
         for (int index = 0; index < targets.size(); index++) {
             long share = shares.get(index);
@@ -457,36 +655,47 @@ public final class ElectricalGridService {
 
     private static void updatePortStates(List<PortBinding> compatible, PortBinding primarySource,
                                          List<PowerTarget> loadRequests, CircuitPowerPlan plan,
-                                         EnergyTier supplyTier, WiringMode wiring, int nominalVolts,
-                                         long requestedCircuitWatts, long primarySourceWatts) {
+                                         EnergyTier supplyTier, WiringMode wiring,
+                                         long requestedCircuitWatts) {
+        long totalDrawWatts = saturatingSum(
+                plan.sourceDraws().stream().map(PowerFlow::watts).toList());
+        double efficiency = totalDrawWatts <= 0L ? 0.0
+                : Math.clamp(plan.deliveredWatts() / (double) totalDrawWatts, 0.0, 1.0);
         for (PortBinding binding : compatible) {
             long received = flowWatts(plan.receivers(), binding);
             long injected = flowWatts(plan.sourceInjections(), binding);
             long drawn = flowWatts(plan.sourceDraws(), binding);
             long displayedPower = binding.equals(primarySource) || injected > 0L ? drawn : received;
             long currentPower = injected > 0L ? injected : received;
-            double current = ElectricalUnits.currentAmps(currentPower, nominalVolts);
+            double current = wiring.lineCurrentAmps(currentPower, supplyTier);
             FaultKind fault = FaultKind.NONE;
-            if (binding.equals(primarySource) && signalsOvercurrent(binding.port(),
-                    requestedCircuitWatts, primarySourceWatts, plan.deliveredWatts())) {
+            if (isMeasuredOvercurrent(binding.port(), current, wiring, supplyTier)) {
                 fault = FaultKind.OVERCURRENT;
             } else if (binding.port().electricalRole() == ElectricalPortRole.LOAD
                     && received < targetWatts(loadRequests, binding)) {
                 fault = FaultKind.UNDERVOLTAGE;
             }
-            binding.port().updateGridState(new GridState(true, true, supplyTier, wiring,
-                    displayedPower, current, fault));
+            long requested = binding.equals(primarySource)
+                    ? requestedCircuitWatts
+                    : binding.port().electricalRole() == ElectricalPortRole.STORAGE
+                            ? binding.port().requestedPowerWatts()
+                            : targetWatts(loadRequests, binding);
+            long netPower = received - drawn;
+            updateGridState(binding, new GridState(true, true, supplyTier, wiring,
+                    displayedPower, current, fault, requested, netPower,
+                    plan.lossWatts(), efficiency));
         }
     }
 
-    /** Distinguishes a saturated protection device from upstream starvation or local storage support. */
-    static boolean signalsOvercurrent(IElectricalPort source, long requestedWatts,
-                                      long availableWatts, long deliveredWatts) {
-        long tripWatts = source.overcurrentTripWatts();
-        return tripWatts > 0L
-                && requestedWatts > tripWatts
-                && availableWatts >= tripWatts
-                && deliveredWatts < requestedWatts;
+    /** Uses settled port current, so unmet demand and remote storage cannot cause a false trip. */
+    static boolean isMeasuredOvercurrent(IElectricalPort port, double currentAmps,
+                                         WiringMode wiring, EnergyTier tier) {
+        long tripWatts = port.overcurrentTripWatts();
+        if (tripWatts <= 0L || !Double.isFinite(currentAmps)) {
+            return false;
+        }
+        double tripCurrentAmps = wiring.lineCurrentAmps(tripWatts, tier);
+        return currentAmps > tripCurrentAmps;
     }
 
     private static long flowWatts(List<PowerFlow> flows, PortBinding binding) {
@@ -503,7 +712,6 @@ public final class ElectricalGridService {
         List<PortBinding> energizedSources = bindings.stream()
                 .filter(binding -> binding.port().electricalRole() == ElectricalPortRole.SOURCE)
                 .filter(binding -> binding.port().enabled())
-                .filter(binding -> binding.port().availablePowerWatts() > 0L)
                 .toList();
         Set<PortBinding> conflicts = new HashSet<>();
         for (int first = 0; first < energizedSources.size(); first++) {
@@ -522,10 +730,10 @@ public final class ElectricalGridService {
     private static List<PowerTarget> uniquePowerTargets(List<PortBinding> bindings,
                                                          GridTransferLedger transfers,
                                                          boolean extracting) {
-        Map<Object, Boolean> seen = new IdentityHashMap<>();
+        Set<Object> seen = new HashSet<>();
         List<PowerTarget> targets = new ArrayList<>();
         for (PortBinding binding : bindings) {
-            if (seen.put(binding.port().energyAccount(), Boolean.TRUE) != null) continue;
+            if (!seen.add(binding.port().energyAccount())) continue;
             long watts = extracting
                     ? transfers.extractableWatts(binding.port())
                     : transfers.receivableWatts(binding.port());
@@ -537,6 +745,12 @@ public final class ElectricalGridService {
     private static void updateUnmatchedPorts(List<PortBinding> incomplete, List<PortBinding> all,
                                              Set<PortBinding> sourceConflicts,
                                              Map<IElectricalPort, List<IElectricalPort>> faultUpstreamCircuits) {
+        List<PortBinding> connectedDedicatedSources = all.stream()
+                .filter(binding -> binding.port().electricalRole() == ElectricalPortRole.SOURCE)
+                .toList();
+        List<PortBinding> connectedStorageSources = all.stream()
+                .filter(binding -> binding.port().electricalRole() == ElectricalPortRole.STORAGE)
+                .toList();
         List<PortBinding> dedicatedSources = all.stream()
                 .filter(binding -> binding.port().electricalRole() == ElectricalPortRole.SOURCE)
                 .filter(binding -> binding.port().enabled())
@@ -551,24 +765,40 @@ public final class ElectricalGridService {
         for (PortBinding binding : all) {
             if (binding.port().electricalRole() == ElectricalPortRole.SOURCE) {
                 if (sourceConflicts.contains(binding)) {
-                    binding.port().updateGridState(new GridState(true, true, binding.port().tier(),
+                    updateGridState(binding, new GridState(true, true, binding.port().tier(),
                             binding.port().wiring(), 0L, 0.0, FaultKind.MULTIPLE_GRID_SOURCES));
                 } else if (incompleteSet.contains(binding)) {
-                    binding.port().updateGridState(GridState.offline(binding.port().wiring(),
+                    updateGridState(binding, GridState.offline(binding.port().wiring(),
                             FaultKind.INCOMPLETE_WIRING, binding.port().enabled()));
                 }
                 continue;
             }
             if (!binding.tierValid()) {
-                binding.port().updateGridState(GridState.offline(binding.port().wiring(),
+                updateGridState(binding, GridState.offline(binding.port().wiring(),
                         FaultKind.INCOMPLETE_WIRING, false));
                 continue;
             }
             if (!binding.port().enabled()) {
                 if (incompleteSet.contains(binding)) {
-                    binding.port().updateGridState(GridState.offline(binding.port().wiring(),
+                    updateGridState(binding, GridState.offline(binding.port().wiring(),
                             FaultKind.OPEN_SWITCH, false));
                 }
+                continue;
+            }
+
+            PortBinding exactConnectedSource = connectedDedicatedSources.stream()
+                    .filter(candidate -> candidate.roots().equals(binding.roots()))
+                    .findFirst()
+                    .or(() -> connectedStorageSources.stream()
+                            .filter(candidate -> candidate.roots().equals(binding.roots()))
+                            .findFirst())
+                    .orElse(null);
+            if (exactConnectedSource != null && isSolvedExactCircuit(
+                    !incompleteSet.contains(binding), !incompleteSet.contains(exactConnectedSource))) {
+                // solveCircuit already assigned this exact circuit's state. An
+                // in-line source may have passed its whole buffer downstream in
+                // that transaction, so post-transaction availability must not
+                // overwrite the settled state with a false undervoltage.
                 continue;
             }
 
@@ -584,27 +814,31 @@ public final class ElectricalGridService {
                     .filter(candidate -> candidate.roots().equals(binding.roots()))
                     .findFirst()
                     .orElse(null);
-            boolean exactCircuit = exactSource != null && isSolvedExactCircuit(
-                    !incompleteSet.contains(binding), !incompleteSet.contains(exactSource));
-            if (exactCircuit) continue;
             if (overlappingSources.isEmpty()) {
-                if (incompleteSet.contains(binding)) {
-                    binding.port().updateGridState(GridState.offline(binding.port().wiring(),
-                            FaultKind.INCOMPLETE_WIRING, false));
-                }
+                updateGridState(binding, GridState.offline(binding.port().wiring(),
+                        offlineFaultWithoutSource(incompleteSet.contains(binding)), false));
                 continue;
             }
             if (overlappingDedicatedSources.size() > 1) {
                 PortBinding first = overlappingSources.get(0);
-                binding.port().updateGridState(new GridState(true, true, first.port().tier(),
+                updateGridState(binding, new GridState(true, true, first.port().tier(),
                         first.port().wiring(), 0L, 0.0, FaultKind.MULTIPLE_GRID_SOURCES));
                 continue;
             }
 
             PortBinding source = exactSource != null ? exactSource : overlappingSources.get(0);
             if (sourceConflicts.contains(source)) {
-                binding.port().updateGridState(new GridState(true, true, source.port().tier(),
+                updateGridState(binding, new GridState(true, true, source.port().tier(),
                         source.port().wiring(), 0L, 0.0, FaultKind.MULTIPLE_GRID_SOURCES));
+                continue;
+            }
+            if ((incompleteSet.contains(binding) || incompleteSet.contains(source))
+                    && (binding.unloadedConductor() || source.unloadedConductor())) {
+                // A saved run crossing into an unloaded chunk is an unknown conductor, not
+                // evidence of a live phase loss. Fail de-energized until every participating
+                // terminal is loaded; never ask for the far block entity here.
+                updateGridState(binding, GridState.offline(binding.port().wiring(),
+                        FaultKind.UNDERVOLTAGE, false));
                 continue;
             }
             FaultKind fault = faultForUnmatchedConnection(binding.port().tier(), source.port().tier());
@@ -617,6 +851,44 @@ public final class ElectricalGridService {
         return receivingPortComplete && sourcePortComplete;
     }
 
+    /** A complete local port with no loaded source is de-energized, never a live phase fault. */
+    static FaultKind offlineFaultWithoutSource(boolean incompleteBinding) {
+        return incompleteBinding ? FaultKind.INCOMPLETE_WIRING : FaultKind.UNDERVOLTAGE;
+    }
+
+    /** Half-loaded runs stay outside the active thermal solver until both terminals return. */
+    static boolean bothEndpointsPresent(CableConnection cable,
+                                        Collection<TerminalEndpoint> loadedEndpoints) {
+        return cable != null && loadedEndpoints != null
+                && loadedEndpoints.contains(cable.a()) && loadedEndpoints.contains(cable.b());
+    }
+
+    /**
+     * Finds the loaded ends of authoritative runs whose opposite chunk is unavailable.
+     * The supplied predicate must be a non-loading chunk-presence check such as Level#isLoaded.
+     */
+    static Set<TerminalEndpoint> loadedEndpointsWithUnloadedPeers(
+            Collection<CableConnection> cables,
+            Collection<TerminalEndpoint> loadedEndpoints,
+            Predicate<BlockPos> positionLoaded) {
+        Set<TerminalEndpoint> result = new HashSet<>();
+        if (cables == null || loadedEndpoints == null || positionLoaded == null) {
+            return Set.of();
+        }
+        for (CableConnection cable : cables) {
+            if (cable == null) continue;
+            boolean aPresent = loadedEndpoints.contains(cable.a());
+            boolean bPresent = loadedEndpoints.contains(cable.b());
+            if (aPresent && !bPresent && !positionLoaded.test(cable.b().pos())) {
+                result.add(cable.a());
+            }
+            if (bPresent && !aPresent && !positionLoaded.test(cable.a().pos())) {
+                result.add(cable.b());
+            }
+        }
+        return Set.copyOf(result);
+    }
+
     static FaultKind faultForUnmatchedConnection(EnergyTier receivingTier, EnergyTier supplyTier) {
         if (!receivingTier.accepts(supplyTier)) {
             return FaultKind.OVERVOLTAGE;
@@ -626,7 +898,7 @@ public final class ElectricalGridService {
 
     private static void updateFaultedPort(PortBinding affected, PortBinding source, GridState state,
                                           Map<IElectricalPort, List<IElectricalPort>> faultUpstreamCircuits) {
-        affected.port().updateGridState(state);
+        updateGridState(affected, state);
         if (affected.port() != source.port()
                 && affected.port().electricalRole() != ElectricalPortRole.SOURCE) {
             reportDownstreamFault(source.port(), state,
@@ -666,7 +938,7 @@ public final class ElectricalGridService {
 
     /** Stable dependency order that lets an in-line device receive before its source side runs. */
     static List<Integer> circuitSolveOrder(List<? extends List<? extends IElectricalPort>> circuits) {
-        Map<Object, AccountCircuits> byAccount = new IdentityHashMap<>();
+        Map<Object, AccountCircuits> byAccount = new HashMap<>();
         for (int index = 0; index < circuits.size(); index++) {
             for (IElectricalPort port : circuits.get(index)) {
                 if (!port.allowsSameTickPassThrough()) continue;
@@ -755,24 +1027,50 @@ public final class ElectricalGridService {
 
     private static void recordCableLoads(List<CableConnection> cables,
                                          Map<CableConnection, Double> currentAmpsByCable,
-                                         Map<CableRunKey, CableLoad> cableLoads) {
+                                         Map<CableRunId, CableLoad> cableLoads) {
         for (CableConnection cable : cables) {
             double currentAmps = Math.max(0.0, currentAmpsByCable.getOrDefault(cable, 0.0));
-            cableLoads.merge(cable.runKey(), new CableLoad(cable, currentAmps),
+            cableLoads.merge(cable.runId(), new CableLoad(cable, currentAmps),
                     (first, next) -> new CableLoad(first.cable(),
                             first.currentAmps() + next.currentAmps()));
         }
     }
 
+    private static void recordEnergizedCables(
+            CircuitTopology topology, int volts,
+            Map<CableConnection, Double> currentAmpsByCable,
+            Map<CableRunId, EnergizedCable> energizedCables) {
+        if (volts <= 0) return;
+        Map<CableConnection, Double> resistanceByCable = new HashMap<>();
+        for (RadialCableFlow.Branch<TerminalEndpoint, CableConnection> branch : topology.branches()) {
+            resistanceByCable.put(branch.edge(), branch.resistanceOhms());
+        }
+        for (CableConnection cable : topology.cables()) {
+            double measuredAmps = currentAmpsByCable.getOrDefault(cable, 0.0);
+            double currentAmps = Double.isFinite(measuredAmps) ? Math.max(0.0, measuredAmps) : 0.0;
+            long lineLossWatts = roundedLoss(ElectricalUnits.resistiveLossWatts(
+                    currentAmps, resistanceByCable.getOrDefault(cable, 0.0)));
+            EnergizedCable next = new EnergizedCable(cable, volts, currentAmps, lineLossWatts);
+            energizedCables.merge(cable.runId(), next,
+                    (first, second) -> {
+                        if (first.volts() != second.volts()) {
+                            return first.volts() > second.volts() ? first : second;
+                        }
+                        return first.currentAmps() > second.currentAmps() ? first : second;
+                    });
+        }
+    }
+
     private static void applyCableHeat(Level level, Collection<CableLoad> cableLoads) {
-        Map<CableRunKey, CableThermalModel.State> thermalStates =
-                CABLE_THERMAL_STATE.computeIfAbsent(level, ignored -> new HashMap<>());
+        if (!(level instanceof ServerLevel serverLevel)) return;
+        ElectricalNetworkSavedData data = ElectricalNetworkSavedData.get(serverLevel);
+        long gameTick = level.getGameTime();
         List<CableConnection> failed = new ArrayList<>();
         for (CableLoad load : cableLoads) {
             CableConnection cable = load.cable();
             double currentAmps = load.currentAmps();
             double ratio = currentAmps / Math.max(1.0, cable.effectiveAmpacity());
-            CableThermalModel.State state = advanceCableThermalState(thermalStates, cable, ratio);
+            CableThermalModel.State state = advanceCableThermalState(data, cable, ratio, gameTick);
             if (CableThermalModel.failed(state)) {
                 failed.add(cable);
             }
@@ -789,16 +1087,26 @@ public final class ElectricalGridService {
     }
 
     static CableThermalModel.State advanceCableThermalState(
-            Map<CableRunKey, CableThermalModel.State> thermalStates,
+            Map<CableRunId, CableThermalModel.State> thermalStates,
             CableConnection cable, double currentRatio) {
-        CableRunKey runKey = cable.runKey();
+        CableRunId runId = cable.runId();
         CableThermalModel.State state = CableThermalModel.nextState(
-                thermalStates.getOrDefault(runKey, CableThermalModel.State.COLD), currentRatio);
+                thermalStates.getOrDefault(runId, CableThermalModel.State.COLD), currentRatio);
         if (state.cold() || CableThermalModel.failed(state)) {
-            thermalStates.remove(runKey);
+            thermalStates.remove(runId);
         } else {
-            thermalStates.put(runKey, state);
+            thermalStates.put(runId, state);
         }
+        return state;
+    }
+
+    static CableThermalModel.State advanceCableThermalState(
+            ElectricalNetworkSavedData data, CableConnection cable,
+            double currentRatio, long gameTick) {
+        CableRunId runId = cable.runId();
+        CableThermalModel.State state = CableThermalModel.nextState(
+                data.thermalState(runId, gameTick), currentRatio);
+        data.setThermalState(runId, state, gameTick);
         return state;
     }
 
@@ -809,18 +1117,17 @@ public final class ElectricalGridService {
         return first.equals(second) ? List.of(first) : List.of(first, second);
     }
 
-    private static void coolInactiveCables(Level level, Set<CableRunKey> connectedCableRuns,
-                                           Set<CableRunKey> activeCableRuns) {
-        Map<CableRunKey, CableThermalModel.State> thermalStates = CABLE_THERMAL_STATE.get(level);
-        if (thermalStates == null) return;
-        thermalStates.keySet().removeIf(run -> !connectedCableRuns.contains(run));
-        for (CableRunKey run : new ArrayList<>(thermalStates.keySet())) {
+    private static void coolInactiveCables(Level level, Set<CableRunId> connectedCableRuns,
+                                           Set<CableRunId> activeCableRuns) {
+        if (!(level instanceof ServerLevel serverLevel)) return;
+        ElectricalNetworkSavedData data = ElectricalNetworkSavedData.get(serverLevel);
+        long gameTick = level.getGameTime();
+        for (CableRunId run : connectedCableRuns) {
             if (activeCableRuns.contains(run)) continue;
-            CableThermalModel.State cooled = CableThermalModel.nextState(
-                    thermalStates.get(run), 0.0);
-            if (cooled.cold()) thermalStates.remove(run); else thermalStates.put(run, cooled);
+            CableThermalModel.State current = data.thermalState(run, gameTick);
+            CableThermalModel.State cooled = CableThermalModel.nextState(current, 0.0);
+            data.setThermalState(run, cooled, gameTick);
         }
-        if (thermalStates.isEmpty()) CABLE_THERMAL_STATE.remove(level);
     }
 
     private static long totalTargetWatts(Collection<PowerTarget> targets) {
@@ -870,10 +1177,31 @@ public final class ElectricalGridService {
         return tier != 0 ? tier : Integer.compare(a.port().wiring().ordinal(), b.port().wiring().ordinal());
     }
 
+    private static void updateGridState(PortBinding binding, GridState state) {
+        IElectricalPort primary = binding.port();
+        primary.updateGridState(state);
+        for (IElectricalPort member : binding.members()) {
+            if (member != primary) {
+                member.updateGridStateReplica(state);
+            }
+        }
+    }
+
+    static boolean compatiblePortGroup(IElectricalPort first, IElectricalPort next) {
+        return first.tier() == next.tier()
+                && first.wiring() == next.wiring()
+                && first.electricalRole() == next.electricalRole()
+                && first.enabled() == next.enabled()
+                && first.maxPowerWatts() == next.maxPowerWatts()
+                && first.allowsSameTickPassThrough() == next.allowsSameTickPassThrough()
+                && Objects.equals(first.energyAccount(), next.energyAccount());
+    }
+
     private record PortBinding(IElectricalPort port, List<TerminalEndpoint> endpoints,
                                List<TerminalEndpoint> roots,
                                Map<TerminalEndpoint, TerminalEndpoint> endpointsByRoot,
-                               boolean tierValid) {}
+                               boolean tierValid, List<IElectricalPort> members,
+                               boolean unloadedConductor) {}
 
     private record PowerTarget(PortBinding binding, long watts) {}
 
@@ -888,11 +1216,12 @@ public final class ElectricalGridService {
             boolean supported) {}
 
     private record FlowSnapshot(boolean supported, long lossWatts,
+                                List<PowerFlow> sourceDraws,
                                 List<PowerFlow> sourceInjections,
                                 List<PowerFlow> receivers,
                                 Map<CableConnection, Double> currentAmpsByCable) {
         static FlowSnapshot unsupported() {
-            return new FlowSnapshot(false, 0L, List.of(), List.of(), Map.of());
+            return new FlowSnapshot(false, 0L, List.of(), List.of(), List.of(), Map.of());
         }
     }
 
@@ -909,10 +1238,19 @@ public final class ElectricalGridService {
     private static final class PortAccumulator {
         private final IElectricalPort port;
         private final List<TerminalEndpoint> endpoints = new ArrayList<>();
+        private final Set<IElectricalPort> members =
+                Collections.newSetFromMap(new IdentityHashMap<>());
         private boolean tierValid = true;
 
         private PortAccumulator(IElectricalPort port) {
             this.port = port;
+        }
+
+        private void add(IElectricalPort member, EnergyTier rackTier,
+                         Collection<TerminalEndpoint> newEndpoints) {
+            tierValid &= rackTier == member.tier() && compatiblePortGroup(port, member);
+            members.add(member);
+            endpoints.addAll(newEndpoints);
         }
     }
 

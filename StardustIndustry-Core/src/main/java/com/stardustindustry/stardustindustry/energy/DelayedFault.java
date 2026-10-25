@@ -1,5 +1,7 @@
 package com.stardustindustry.stardustindustry.energy;
 
+import net.minecraft.nbt.CompoundTag;
+
 /**
  * Debounces destructive faults. A condition must stay present for the full
  * confirmation window; one unstable tick resets the countdown.
@@ -43,5 +45,17 @@ public final class DelayedFault {
     public void reset() {
         observedTicks = 0;
         latched = false;
+    }
+
+    public CompoundTag save() {
+        CompoundTag tag = new CompoundTag();
+        tag.putInt("ObservedTicks", observedTicks);
+        tag.putBoolean("Latched", latched);
+        return tag;
+    }
+
+    public void load(CompoundTag tag) {
+        observedTicks = Math.max(0, Math.min(confirmationTicks, tag.getInt("ObservedTicks")));
+        latched = tag.getBoolean("Latched") || observedTicks >= confirmationTicks;
     }
 }

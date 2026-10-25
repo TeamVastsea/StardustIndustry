@@ -41,7 +41,7 @@ public class TerminalMountBlockEntity extends BlockEntity {
     private final java.util.Map<Integer, TerminalStyle> terminals = new java.util.TreeMap<>();
 
     /**
-     * Cables leaving this rack, grouped by the cell they leave from.
+     * Client/render/solver cache of authoritative dimension-level cable records.
      *
      * <p><b>A cell may hold any number of cables.</b> The design first said "one
      * cable per terminal", and that was wrong: in reality a terminal is a busbar
@@ -57,6 +57,10 @@ public class TerminalMountBlockEntity extends BlockEntity {
      */
     private final java.util.Map<Integer, java.util.List<com.stardustindustry.stardustindustry.energy.CableConnection>>
             cables = new java.util.TreeMap<>();
+
+    /** Cable halves read from old block-entity NBT and consumed once by onLoad. */
+    private final java.util.List<com.stardustindustry.stardustindustry.energy.CableConnection>
+            legacyCableCandidates = new java.util.ArrayList<>();
 
     public TerminalMountBlockEntity(BlockPos pos, BlockState state) {
         super(com.stardustindustry.stardustindustry.registry.ModBlockEntities.TERMINAL_MOUNT.get(), pos, state);
@@ -87,30 +91,14 @@ public class TerminalMountBlockEntity extends BlockEntity {
         return terminals.containsKey(cell);
     }
 
-    /**
-     * Prunes cable halves whose other end no longer exists.
-     *
-     * <h2>Why a block entity has to check its own cables</h2>
-     * <p>A cable lives in two block entities. When one rack is broken, the code
-     * that breaks it clears the far half too — but only if that far chunk is
-     * <b>loaded</b>. If it is not, the far rack wakes up later still believing it
-     * has a cable, pointing at a block that is now air. Without this check that
-     * ghost is permanent: the line renders out of nothing, and putting a new rack
-     * back in the old spot makes it look like the cable was never deleted.</p>
-     *
-     * <p>Pruning happens on load, which is exactly when an unloaded chunk starts
-     * being observed again. Nothing is dropped here: the player already received
-     * the spool when the first rack was broken, and dropping again would duplicate
-     * it.</p>
-     */
     @Override
     public void onLoad() {
         super.onLoad();
         if (level != null && !level.isClientSide()) {
+            com.stardustindustry.stardustindustry.energy.CableService.synchronizeRack(
+                    this, java.util.List.copyOf(legacyCableCandidates));
+            legacyCableCandidates.clear();
             com.stardustindustry.stardustindustry.energy.ElectricalGridService.registerRack(this);
-        }
-        if (level != null && !level.isClientSide()) {
-            pruneOrphanCables();
         }
     }
 
@@ -120,70 +108,6 @@ public class TerminalMountBlockEntity extends BlockEntity {
             com.stardustindustry.stardustindustry.energy.ElectricalGridService.unregisterRack(this);
         }
         super.setRemoved();
-    }
-
-    /** Drops every cable half on this rack whose other endpoint is gone. */
-    private void pruneOrphanCables() {
-        if (cables.isEmpty()) {
-            return;
-        }
-        boolean changed = false;
-        for (var iterator = cables.entrySet().iterator(); iterator.hasNext(); ) {
-            Map.Entry<Integer, java.util.List<com.stardustindustry.stardustindustry.energy.CableConnection>> entry =
-                    iterator.next();
-            int cell = entry.getKey();
-            java.util.List<com.stardustindustry.stardustindustry.energy.CableConnection> list = entry.getValue();
-            // The post itself must still be bolted on; a half recorded on a cell
-            // with no terminal is just as orphaned as one pointing at air.
-            if (!terminals.containsKey(cell)) {
-                iterator.remove();
-                changed = true;
-                continue;
-            }
-            if (list.removeIf(this::farEndMissing)) {
-                changed = true;
-            }
-            if (list.isEmpty()) {
-                iterator.remove();
-            }
-        }
-        if (changed) {
-            sync();
-        }
-    }
-
-    /**
-     * True when {@code cable}'s other end is gone, or cannot be verified as
-     * existing.
-     *
-     * <p>An unloaded far chunk is <b>not</b> evidence of absence: it is the normal
-     * state for a long run, and treating it as missing would silently delete every
-     * cable that crosses a chunk border whenever the player walks away. Only a
-     * loaded chunk that turns out to lack the rack, or to lack that cell's
-     * terminal, proves the end is gone.</p>
-     */
-    private boolean farEndMissing(com.stardustindustry.stardustindustry.energy.CableConnection cable) {
-        // Match whichever end belongs to *this* block by position; the cell in the
-        // map key is the authoritative one for this half.
-        com.stardustindustry.stardustindustry.energy.TerminalEndpoint far = null;
-        if (cable.a().pos().equals(worldPosition)) {
-            far = cable.b();
-        } else if (cable.b().pos().equals(worldPosition)) {
-            far = cable.a();
-        }
-        if (far == null) {
-            return true;
-        }
-        if (far.pos().equals(worldPosition)) {
-            // A jumper between two posts on this very rack: the far post is a cell
-            // on the same block entity.
-            return !terminals.containsKey(far.cell());
-        }
-        if (!level.isLoaded(far.pos())) {
-            return false;
-        }
-        return !(level.getBlockEntity(far.pos()) instanceof TerminalMountBlockEntity farRack)
-                || !farRack.hasTerminal(far.cell());
     }
 
     /** The tier of the terminal at {@code cell}, or {@code null} when empty. */
@@ -229,36 +153,12 @@ public class TerminalMountBlockEntity extends BlockEntity {
         if (style == null) {
             return;
         }
-        // Every cable on this post comes off with it: a cable whose end has been
-        // unscrewed would otherwise hang off nothing.
-        //
-        // A cable strung between two cells of *this same rack* is stored under the
-        // smaller cell only, so it is missing from this cell's list whenever the
-        // larger cell is the one being unscrewed. Sweeping the rack for anything
-        // else that touches this endpoint catches those; otherwise a short jumper
-        // between two posts on one plate would survive the terminal it was bolted
-        // to and hang off nothing.
         com.stardustindustry.stardustindustry.energy.TerminalEndpoint here =
                 new com.stardustindustry.stardustindustry.energy.TerminalEndpoint(worldPosition, cell);
-        java.util.List<com.stardustindustry.stardustindustry.energy.CableConnection> affected =
-                new java.util.ArrayList<>(disconnectCablesAt(cell));
-        for (com.stardustindustry.stardustindustry.energy.CableConnection cable
-                : new java.util.ArrayList<>(cables())) {
-            if (!affected.contains(cable) && (cable.a().equals(here) || cable.b().equals(here))) {
-                affected.add(cable);
-            }
-        }
-        for (com.stardustindustry.stardustindustry.energy.CableConnection cable : affected) {
-            disconnectCable(cable);
-            dropCable(cable);
-            // The far half must go too, or the other rack keeps a cable pointing at
-            // a terminal that no longer exists.
-            var far = cable.a().cell() == cell && cable.a().pos().equals(worldPosition) ? cable.b() : cable.a();
-            if (!far.pos().equals(worldPosition)
-                    && level != null
-                    && level.getBlockEntity(far.pos())
-                    instanceof TerminalMountBlockEntity farRack) {
-                farRack.disconnectCable(cable);
+        if (level != null && !level.isClientSide()) {
+            for (ItemStack cableStack
+                    : com.stardustindustry.stardustindustry.energy.CableService.disconnectAll(level, here)) {
+                Block.popResource(level, worldPosition, cableStack);
             }
         }
         ItemStack stack = TerminalMountBlock.TerminalItem.stackFor(style);
@@ -270,9 +170,13 @@ public class TerminalMountBlockEntity extends BlockEntity {
         sync();
     }
 
-    /** Removes every terminal and returns the stacks, for a full-rack take. */
+    /** Removes every cable and terminal and returns their stacks, for a full-rack take. */
     public java.util.List<ItemStack> drainTerminals() {
-        java.util.List<ItemStack> out = new java.util.ArrayList<>(terminals.size());
+        java.util.List<ItemStack> out = new java.util.ArrayList<>();
+        if (level != null && !level.isClientSide()) {
+            out.addAll(com.stardustindustry.stardustindustry.energy.CableService.disconnectAll(
+                    level, worldPosition));
+        }
         for (TerminalStyle style : terminals.values()) {
             out.add(TerminalMountBlock.TerminalItem.stackFor(style));
         }
@@ -283,14 +187,9 @@ public class TerminalMountBlockEntity extends BlockEntity {
 
     // ---- cables ----
     //
-    // Cables are stored HERE, on the rack, not in a level-wide table. A cable
-    // belongs to two racks, so each rack holds its own half of every cable that
-    // touches it, recording the cell here and the far endpoint. That keeps the
-    // data local: it loads and unloads with the chunk, syncs with the normal
-    // block-entity packet, and costs nothing for wiring the player cannot see.
-    // With dense cabling a global table would have to be either fully synced to
-    // every client or kept correct by a hand-written incremental protocol; both
-    // get expensive exactly when the wiring gets interesting.
+    // The server-side authority is ElectricalNetworkSavedData. This local map is
+    // deliberately retained as a compact cache because the renderer and the
+    // existing grid solver already consume rack-local cable collections.
 
     /** The facing this rack is bolted against, read from its blockstate. */
     public Direction facing() {
@@ -326,6 +225,32 @@ public class TerminalMountBlockEntity extends BlockEntity {
         return java.util.Collections.unmodifiableList(all);
     }
 
+    /** Replaces this rack's local cache with the dimension store's current view. */
+    public void replaceCableCacheFromNetwork(
+            java.util.Collection<com.stardustindustry.stardustindustry.energy.CableConnection> authoritative) {
+        java.util.Map<Integer, java.util.List<com.stardustindustry.stardustindustry.energy.CableConnection>> next =
+                new java.util.TreeMap<>();
+        for (com.stardustindustry.stardustindustry.energy.CableConnection cable : authoritative) {
+            int cell = thisCellOf(cable);
+            if (cell < 0) {
+                continue;
+            }
+            java.util.List<com.stardustindustry.stardustindustry.energy.CableConnection> list =
+                    next.computeIfAbsent(cell, ignored -> new java.util.ArrayList<>());
+            if (!list.contains(cable)) {
+                list.add(cable);
+            }
+        }
+        next.values().forEach(list -> list.sort(java.util.Comparator.comparing(
+                com.stardustindustry.stardustindustry.energy.CableConnection::runId)));
+        if (cables.equals(next)) {
+            return;
+        }
+        cables.clear();
+        cables.putAll(next);
+        sync();
+    }
+
     /**
      * Records a cable half on this rack and pushes it to clients.
      *
@@ -341,6 +266,10 @@ public class TerminalMountBlockEntity extends BlockEntity {
      *         player a second spool for a cable nothing changed on.
      */
     public boolean putCable(com.stardustindustry.stardustindustry.energy.CableConnection cable) {
+        if (level != null && !level.isClientSide()) {
+            return com.stardustindustry.stardustindustry.energy.CableService.connect(
+                    level, cable.a(), cable.b(), cable.ampacity(), cable.insulation(), cable.color());
+        }
         int cell = thisCellOf(cable);
         if (cell < 0) {
             return false;
@@ -373,6 +302,15 @@ public class TerminalMountBlockEntity extends BlockEntity {
      * for the operation that removes both ends.</p>
      */
     public java.util.List<com.stardustindustry.stardustindustry.energy.CableConnection> disconnectCablesAt(int cell) {
+        if (level != null && !level.isClientSide()) {
+            com.stardustindustry.stardustindustry.energy.TerminalEndpoint endpoint =
+                    new com.stardustindustry.stardustindustry.energy.TerminalEndpoint(worldPosition, cell);
+            java.util.List<com.stardustindustry.stardustindustry.energy.CableConnection> removed =
+                    com.stardustindustry.stardustindustry.energy.CableService.cablesAt(level, worldPosition)
+                            .stream().filter(cable -> cable.touches(endpoint)).toList();
+            com.stardustindustry.stardustindustry.energy.CableService.disconnectAll(level, endpoint);
+            return removed;
+        }
         java.util.List<com.stardustindustry.stardustindustry.energy.CableConnection> removed = cables.remove(cell);
         if (removed == null) {
             return java.util.List.of();
@@ -387,6 +325,10 @@ public class TerminalMountBlockEntity extends BlockEntity {
      * <p>Used when only one of several cables on a terminal is being cut.</p>
      */
     public boolean disconnectCable(com.stardustindustry.stardustindustry.energy.CableConnection cable) {
+        if (level != null && !level.isClientSide()) {
+            return com.stardustindustry.stardustindustry.energy.CableService
+                    .disconnectDetailed(level, cable).changed();
+        }
         int cell = thisCellOf(cable);
         if (cell < 0) {
             return false;
@@ -411,6 +353,15 @@ public class TerminalMountBlockEntity extends BlockEntity {
      */
     public boolean replaceCable(com.stardustindustry.stardustindustry.energy.CableConnection oldCable,
                                 com.stardustindustry.stardustindustry.energy.CableConnection replacement) {
+        if (level != null && !level.isClientSide()) {
+            if (!oldCable.runId().equals(replacement.runId())
+                    || oldCable.ampacity() != replacement.ampacity()
+                    || oldCable.insulation() != replacement.insulation()) {
+                return false;
+            }
+            return com.stardustindustry.stardustindustry.energy.CableService.recolor(
+                    level, oldCable, replacement.color());
+        }
         int cell = thisCellOf(oldCable);
         if (cell < 0) {
             return false;
@@ -449,6 +400,12 @@ public class TerminalMountBlockEntity extends BlockEntity {
 
     /** Removes every cable half on this rack, returning them. */
     public java.util.List<com.stardustindustry.stardustindustry.energy.CableConnection> disconnectAllCables() {
+        if (level != null && !level.isClientSide()) {
+            java.util.List<com.stardustindustry.stardustindustry.energy.CableConnection> removed =
+                    com.stardustindustry.stardustindustry.energy.CableService.cablesAt(level, worldPosition);
+            com.stardustindustry.stardustindustry.energy.CableService.disconnectAll(level, worldPosition);
+            return removed;
+        }
         if (cables.isEmpty()) {
             return java.util.List.of();
         }
@@ -460,16 +417,6 @@ public class TerminalMountBlockEntity extends BlockEntity {
         sync();
         return removed;
     }
-
-
-    /** Pops the cable's item at this block. */
-    private void dropCable(com.stardustindustry.stardustindustry.energy.CableConnection cable) {
-        ItemStack stack = com.stardustindustry.stardustindustry.energy.CableItem.stackOf(cable);
-        if (!stack.isEmpty() && level != null) {
-            Block.popResource(level, worldPosition, stack);
-        }
-    }
-
     /**
      * The hit ray missed the rack's grid face; the player aimed at empty space
      * inside the block, not at a cell.
@@ -641,27 +588,6 @@ public class TerminalMountBlockEntity extends BlockEntity {
             list.add(cell);
         }
         tag.put("Terminals", list);
-
-        // Each cable half records the far endpoint only; this block's position is
-        // implied by where the data is stored. Several rows may share a cell: a
-        // terminal holds any number of cables.
-        ListTag cableList = new ListTag();
-        for (var entry : cables.entrySet()) {
-            for (com.stardustindustry.stardustindustry.energy.CableConnection cable : entry.getValue()) {
-                var far = cable.a().pos().equals(worldPosition) ? cable.b() : cable.a();
-                CompoundTag saved = new CompoundTag();
-                saved.putInt("Cell", entry.getKey());
-                saved.putString("Ampacity", cable.ampacity().id());
-                saved.putString("Insulation", cable.insulation().id());
-                // Colour is per-cable data, not an item variant (§6.8), so it is
-                // saved with the cable's other properties.
-                saved.putInt("Color", cable.color().dyeColor());
-                saved.putLong("FarPos", far.pos().asLong());
-                saved.putInt("FarCell", far.cell());
-                cableList.add(saved);
-            }
-        }
-        tag.put("Cables", cableList);
     }
 
     @Override
@@ -681,6 +607,7 @@ public class TerminalMountBlockEntity extends BlockEntity {
         }
 
         cables.clear();
+        legacyCableCandidates.clear();
         ListTag cableList = tag.getList("Cables", Tag.TAG_COMPOUND);
         for (int i = 0; i < cableList.size(); i++) {
             CompoundTag saved = cableList.getCompound(i);
@@ -688,10 +615,17 @@ public class TerminalMountBlockEntity extends BlockEntity {
                     com.stardustindustry.stardustindustry.energy.CableAmpacity.byId(saved.getString("Ampacity"));
             com.stardustindustry.stardustindustry.energy.CableInsulation insulation =
                     com.stardustindustry.stardustindustry.energy.CableInsulation.byId(saved.getString("Insulation"));
-            if (ampacity == null || insulation == null) {
+            if (ampacity == null || insulation == null
+                    || !saved.contains("Cell", Tag.TAG_INT)
+                    || !saved.contains("FarPos", Tag.TAG_LONG)
+                    || !saved.contains("FarCell", Tag.TAG_INT)) {
                 continue;
             }
             int cell = saved.getInt("Cell");
+            int farCell = saved.getInt("FarCell");
+            if (cell < 0 || farCell < 0) {
+                continue;
+            }
             // Older saves have no Color (they predate dyeable cable) or wrote 0
             // for "unpainted black" (the pre-grey default). Both mean unpainted.
             // A real black dye is 0x1D1D21, never 0, so 0 is unambiguous.
@@ -702,18 +636,47 @@ public class TerminalMountBlockEntity extends BlockEntity {
             if (color.dyeColor() == 0) {
                 color = com.stardustindustry.stardustindustry.energy.CableColor.UNDYED;
             }
-            cables.computeIfAbsent(cell, key -> new java.util.ArrayList<>())
-                    .add(new com.stardustindustry.stardustindustry.energy.CableConnection(
+            com.stardustindustry.stardustindustry.energy.CableConnection cable =
+                    new com.stardustindustry.stardustindustry.energy.CableConnection(
                             ampacity, insulation, color,
                             new com.stardustindustry.stardustindustry.energy.TerminalEndpoint(worldPosition, cell),
                             new com.stardustindustry.stardustindustry.energy.TerminalEndpoint(
-                                    BlockPos.of(saved.getLong("FarPos")), saved.getInt("FarCell"))));
+                                    BlockPos.of(saved.getLong("FarPos")), farCell));
+            java.util.List<com.stardustindustry.stardustindustry.energy.CableConnection> atCell =
+                    cables.computeIfAbsent(cell, key -> new java.util.ArrayList<>());
+            if (!atCell.contains(cable)) {
+                atCell.add(cable);
+            }
+            if (!legacyCableCandidates.contains(cable)) {
+                legacyCableCandidates.add(cable);
+            }
         }
     }
 
     @Override
     public CompoundTag getUpdateTag(HolderLookup.Provider registries) {
-        return saveWithoutMetadata(registries);
+        CompoundTag tag = saveWithoutMetadata(registries);
+        writeCableCache(tag);
+        return tag;
+    }
+
+    /** Writes the rack-local view used only by client rendering and picking. */
+    private void writeCableCache(CompoundTag tag) {
+        ListTag cableList = new ListTag();
+        for (var entry : cables.entrySet()) {
+            for (com.stardustindustry.stardustindustry.energy.CableConnection cable : entry.getValue()) {
+                var far = cable.a().pos().equals(worldPosition) ? cable.b() : cable.a();
+                CompoundTag saved = new CompoundTag();
+                saved.putInt("Cell", entry.getKey());
+                saved.putString("Ampacity", cable.ampacity().id());
+                saved.putString("Insulation", cable.insulation().id());
+                saved.putInt("Color", cable.color().dyeColor());
+                saved.putLong("FarPos", far.pos().asLong());
+                saved.putInt("FarCell", far.cell());
+                cableList.add(saved);
+            }
+        }
+        tag.put("Cables", cableList);
     }
 
     @Override

@@ -1,0 +1,9 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    { "item": "stardustindustry:cable_5000a_bare" },
+    { "item": "minecraft:leather" }
+  ],
+  "result": { "id": "stardustindustry:cable_5000a_class_1", "count": 1 }
+}

@@ -19,6 +19,14 @@ public interface IElectricalPort {
     }
 
     /**
+     * Identity of the logical port represented by this physical capability. Ports with the same
+     * key contribute their conductors to one connection and request power only once.
+     */
+    default Object portGroup() {
+        return this;
+    }
+
+    /**
      * Whether this account represents an in-line device that may receive and extract energy in
      * the same tick. Storage accounts deliberately keep the default one-way behavior.
      */
@@ -26,7 +34,14 @@ public interface IElectricalPort {
         return false;
     }
 
-    /** Power threshold that trips an in-line protection source; zero disables protection signalling. */
+    /**
+     * Supplies this tick's downstream demand to an in-line source before its input circuit is
+     * solved. The value is the output-side source draw, including downstream line loss when known.
+     * Ordinary sources, loads, and storage ignore this preparation step.
+     */
+    default void preparePassThroughDemandWatts(long outputWatts) {}
+
+    /** Nameplate power used to derive the measured-current trip point; zero disables it. */
     default long overcurrentTripWatts() {
         return 0L;
     }
@@ -48,6 +63,11 @@ public interface IElectricalPort {
     }
 
     default void updateGridState(GridState state) {}
+
+    /** Updates a non-primary member of a logical port without repeating destructive side effects. */
+    default void updateGridStateReplica(GridState state) {
+        updateGridState(state);
+    }
 
     /**
      * Reports a fault on the circuit fed by this source. In-line protection

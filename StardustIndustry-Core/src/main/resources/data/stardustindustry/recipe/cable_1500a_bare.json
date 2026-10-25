@@ -1,0 +1,7 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": ["BBB"],
+  "key": { "B": { "item": "minecraft:copper_block" } },
+  "result": { "id": "stardustindustry:cable_1500a_bare", "count": 4 }
+}

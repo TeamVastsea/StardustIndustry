@@ -375,13 +375,21 @@ public final class ModBlocks {
      * grid density is a property of the voltage level.
      */
     public static final DeferredItem<BlockItem> LV_TERMINAL_MOUNT_ITEM =
-            ModRegistries.ITEMS.registerSimpleBlockItem("lv_terminal_mount", LV_TERMINAL_MOUNT);
+            ModRegistries.ITEMS.register("lv_terminal_mount",
+                    () -> new com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlock.MountItem(
+                            LV_TERMINAL_MOUNT.get(), new net.minecraft.world.item.Item.Properties()));
     public static final DeferredItem<BlockItem> MV_TERMINAL_MOUNT_ITEM =
-            ModRegistries.ITEMS.registerSimpleBlockItem("mv_terminal_mount", MV_TERMINAL_MOUNT);
+            ModRegistries.ITEMS.register("mv_terminal_mount",
+                    () -> new com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlock.MountItem(
+                            MV_TERMINAL_MOUNT.get(), new net.minecraft.world.item.Item.Properties()));
     public static final DeferredItem<BlockItem> HV_TERMINAL_MOUNT_ITEM =
-            ModRegistries.ITEMS.registerSimpleBlockItem("hv_terminal_mount", HV_TERMINAL_MOUNT);
+            ModRegistries.ITEMS.register("hv_terminal_mount",
+                    () -> new com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlock.MountItem(
+                            HV_TERMINAL_MOUNT.get(), new net.minecraft.world.item.Item.Properties()));
     public static final DeferredItem<BlockItem> EHV_TERMINAL_MOUNT_ITEM =
-            ModRegistries.ITEMS.registerSimpleBlockItem("ehv_terminal_mount", EHV_TERMINAL_MOUNT);
+            ModRegistries.ITEMS.register("ehv_terminal_mount",
+                    () -> new com.stardustindustry.stardustindustry.machine.terminal.TerminalMountBlock.MountItem(
+                            EHV_TERMINAL_MOUNT.get(), new net.minecraft.world.item.Item.Properties()));
 
     private ModBlocks() {}
 

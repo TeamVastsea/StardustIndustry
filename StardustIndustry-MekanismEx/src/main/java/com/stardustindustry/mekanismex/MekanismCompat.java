@@ -7,10 +7,17 @@ import com.stardustindustry.stardustindustry.registry.ModBlocks;
 import com.stardustindustry.stardustindustry.registry.ModCapabilities;
 
 import mekanism.api.MekanismAPI;
+import mekanism.api.RelativeSide;
 import mekanism.api.chemical.Chemical;
 import mekanism.common.capabilities.Capabilities;
+import mekanism.common.lib.transmitter.TransmissionType;
+import mekanism.common.tile.TileEntityEnergyCube;
+import mekanism.common.tile.component.config.DataType;
 
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 
 /**
@@ -77,5 +84,26 @@ public final class MekanismCompat {
         }
         StardustIndustryMekanismEx.LOGGER.info(
                 "Mekanism bridge: registered {} chemicals as storable gases", count);
+    }
+
+    /** Opens exactly the cube face touching a Stardust FE converter for input and output. */
+    public static boolean configureEnergyCube(
+            ServerLevel level, BlockPos pos, Direction connectingFace) {
+        if (!(level.getBlockEntity(pos) instanceof TileEntityEnergyCube cube)) {
+            return false;
+        }
+        var config = cube.getConfig().getConfig(TransmissionType.ENERGY);
+        if (config == null) {
+            return false;
+        }
+        RelativeSide relativeSide = RelativeSide.fromDirections(
+                cube.getDirection(), connectingFace);
+        if (config.setDataType(DataType.INPUT_OUTPUT, relativeSide)) {
+            cube.getConfig().sideChanged(TransmissionType.ENERGY, relativeSide);
+        }
+        // The converter performs deterministic pull/push itself, so automatic Mekanism
+        // ejection is unnecessary and cannot race the converter's per-tick power limit.
+        config.setEjecting(false);
+        return config.getDataType(relativeSide) == DataType.INPUT_OUTPUT;
     }
 }

@@ -1,0 +1,10 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": ["GRG"],
+  "key": {
+    "G": { "tag": "c:ingots/gold" },
+    "R": { "item": "stardustindustry:mv_fuse" }
+  },
+  "result": { "id": "stardustindustry:hv_fuse", "count": 1 }
+}

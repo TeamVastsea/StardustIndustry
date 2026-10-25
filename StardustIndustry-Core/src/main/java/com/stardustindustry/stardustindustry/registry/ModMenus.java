@@ -29,6 +29,26 @@ public final class ModMenus {
                     () -> IMenuTypeExtension.create((containerId, inventory, data) ->
                             new MachineParamsMenu(containerId, inventory, data)));
 
+    public static final DeferredHolder<MenuType<?>, MenuType<com.stardustindustry.stardustindustry.menu.ElectricalDeviceMenu>> ELECTRICAL_DEVICE =
+            MENUS.register("electrical_device",
+                    () -> IMenuTypeExtension.create(
+                            com.stardustindustry.stardustindustry.menu.ElectricalDeviceMenu::new));
+
+    public static final DeferredHolder<MenuType<?>, MenuType<com.stardustindustry.stardustindustry.menu.CrusherMenu>> CRUSHER =
+            MENUS.register("crusher",
+                    () -> IMenuTypeExtension.create(
+                            com.stardustindustry.stardustindustry.menu.CrusherMenu::new));
+
+    public static final DeferredHolder<MenuType<?>, MenuType<com.stardustindustry.stardustindustry.menu.StorageStationMenu>> STORAGE_STATION =
+            MENUS.register("storage_station",
+                    () -> IMenuTypeExtension.create(
+                            com.stardustindustry.stardustindustry.menu.StorageStationMenu::new));
+
+    public static final DeferredHolder<MenuType<?>, MenuType<com.stardustindustry.stardustindustry.menu.ElectricalDiagnosticMenu>> ELECTRICAL_DIAGNOSTIC =
+            MENUS.register("electrical_diagnostic",
+                    () -> IMenuTypeExtension.create(
+                            com.stardustindustry.stardustindustry.menu.ElectricalDiagnosticMenu::new));
+
     private ModMenus() {}
 
     public static void register(IEventBus modEventBus) {

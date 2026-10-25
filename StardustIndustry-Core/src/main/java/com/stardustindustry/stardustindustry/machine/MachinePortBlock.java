@@ -110,7 +110,35 @@ public class MachinePortBlock extends Block implements EntityBlock {
     @Override
     protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level, BlockPos pos,
                                               Player player, InteractionHand hand, BlockHitResult hit) {
+        if (hand == InteractionHand.MAIN_HAND
+                && com.stardustindustry.stardustindustry.energy.ElectriciansMeterItem
+                        .offhandMeterOwnsEmptyMainHand(
+                                player.getMainHandItem(), player.getOffhandItem())) {
+            return ItemInteractionResult.SKIP_DEFAULT_BLOCK_INTERACTION;
+        }
+        if (stack.getItem() instanceof com.stardustindustry.stardustindustry.energy.ElectriciansMeterItem
+                && level.getBlockEntity(pos)
+                        instanceof com.stardustindustry.stardustindustry.machine.port.EnergyPortBlockEntity) {
+            if (!level.isClientSide()
+                    && player instanceof net.minecraft.server.level.ServerPlayer serverPlayer) {
+                com.stardustindustry.stardustindustry.menu.ElectricalUi.openDiagnostic(serverPlayer, pos);
+            }
+            return ItemInteractionResult.SUCCESS;
+        }
         return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+    }
+
+    @Override
+    protected void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState,
+                            boolean movedByPiston) {
+        if (!state.is(newState.getBlock()) && !level.isClientSide()
+                && level.getBlockEntity(pos) instanceof MachinePortBlockEntity port) {
+            MachineBlockEntity controller = port.controller();
+            if (controller != null) {
+                controller.onStructureBroken(pos);
+            }
+        }
+        super.onRemove(state, level, pos, newState, movedByPiston);
     }
 
     /** The port at {@code pos}, or {@code null} when it is not a port. */

@@ -2,9 +2,21 @@ import org.gradle.api.file.DuplicatesStrategy
 import org.gradle.api.plugins.BasePluginExtension
 import org.gradle.api.tasks.Copy
 import org.gradle.api.tasks.Delete
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputDirectory
+import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.Optional
+import org.gradle.api.tasks.OutputFile
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.Sync
+import org.gradle.api.tasks.TaskAction
+import org.gradle.api.tasks.bundling.Zip
 import org.gradle.api.tasks.compile.JavaCompile
+import org.gradle.api.tasks.options.Option
 import org.gradle.language.jvm.tasks.ProcessResources
+import java.security.MessageDigest
+import java.util.Base64
 
 plugins {
     base
@@ -16,6 +28,128 @@ data class ModModule(
     val displayName: String,
     val archiveName: String,
 )
+
+abstract class WriteTextArtifact : DefaultTask() {
+    @get:Input
+    abstract val contents: Property<String>
+
+    @get:OutputFile
+    abstract val outputFile: RegularFileProperty
+
+    @TaskAction
+    fun writeArtifact() {
+        val output = outputFile.get().asFile
+        output.parentFile.mkdirs()
+        output.writeText(contents.get(), Charsets.UTF_8)
+    }
+}
+
+abstract class VerifyJarSet : DefaultTask() {
+    @get:InputDirectory
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val jarDirectory: DirectoryProperty
+
+    @get:Input
+    abstract val expectedNames: ListProperty<String>
+
+    @TaskAction
+    fun verify() {
+        val actual = jarDirectory.get().asFile
+            .listFiles { file -> file.isFile && file.extension == "jar" }
+            ?.map { it.name }
+            ?.sorted()
+            ?: emptyList()
+        val expected = expectedNames.get().sorted()
+        check(actual == expected) {
+            "Expected exactly ${expected.joinToString()}, staged ${actual.joinToString()}"
+        }
+    }
+}
+
+abstract class Sha256Artifact : DefaultTask() {
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val inputFile: RegularFileProperty
+
+    @get:OutputFile
+    abstract val outputFile: RegularFileProperty
+
+    @TaskAction
+    fun writeChecksum() {
+        val input = inputFile.get().asFile
+        val digest = MessageDigest.getInstance("SHA-256")
+        input.inputStream().buffered().use { stream ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val count = stream.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
+        val checksum = digest.digest().joinToString("") { "%02x".format(it) }
+        val output = outputFile.get().asFile
+        output.parentFile.mkdirs()
+        output.writeText("$checksum  ${input.name}\n", Charsets.US_ASCII)
+    }
+}
+
+abstract class ForwardingRunClient : DefaultTask() {
+    @get:Input
+    @get:Optional
+    abstract val clientArguments: Property<String>
+
+    @Option(
+        option = "args",
+        description = "Command line arguments passed to the Minecraft client.",
+    )
+    fun setCommandLineArguments(arguments: String) {
+        clientArguments.set(arguments)
+    }
+
+    @TaskAction
+    fun prepareArguments() {
+        val encoded = clientArguments.orNull
+            ?.let(::splitCommandLine)
+            ?.joinToString(",") { argument ->
+                Base64.getUrlEncoder().withoutPadding()
+                    .encodeToString(argument.toByteArray(Charsets.UTF_8))
+            }
+            .orEmpty()
+        System.setProperty("stardustindustry.forwardedClientArguments", encoded)
+    }
+
+    private fun splitCommandLine(commandLine: String): List<String> {
+        val arguments = mutableListOf<String>()
+        val current = StringBuilder()
+        var quote: Char? = null
+        var escaped = false
+
+        fun finishArgument() {
+            if (current.isNotEmpty()) {
+                arguments += current.toString()
+                current.setLength(0)
+            }
+        }
+
+        for (character in commandLine) {
+            when {
+                escaped -> {
+                    current.append(character)
+                    escaped = false
+                }
+                character == '\\' -> escaped = true
+                quote != null && character == quote -> quote = null
+                quote == null && (character == '\'' || character == '"') -> quote = character
+                quote == null && character.isWhitespace() -> finishArgument()
+                else -> current.append(character)
+            }
+        }
+        check(quote == null) { "Unterminated quote in --args: $commandLine" }
+        if (escaped) current.append('\\')
+        finishArgument()
+        return arguments
+    }
+}
 
 val modules = mapOf(
     ":StardustIndustry-Core" to ModModule(
@@ -158,6 +292,11 @@ val fetchCompatLibs by tasks.registering(Exec::class) {
 val modulePaths = modules.keys.toList()
 val extensionPaths = modulePaths.filterNot { it == ":StardustIndustry-Core" }
 val localBuildRoot = file("${System.getProperty("java.io.tmpdir")}/stardustindustry-build")
+val modVersion = providers.gradleProperty("mod_version").get()
+val minecraftVersion = providers.gradleProperty("minecraft_version").get()
+val neoForgeVersion = providers.gradleProperty("neo_version").get()
+val firstPartyBundleName = "StardustIndustry-$modVersion-mc$minecraftVersion-first-party"
+val firstPartyJarNames = modules.values.map { "${it.archiveName}-$modVersion.jar" }.sorted()
 
 val collectModJars by tasks.registering(Sync::class) {
     group = "build"
@@ -170,6 +309,88 @@ val collectModJars by tasks.registering(Sync::class) {
         }
     }
     into(layout.buildDirectory.dir("libs"))
+}
+
+val firstPartyDependencyNotes = layout.buildDirectory.file("generated/distribution/DEPENDENCIES.txt")
+val generateFirstPartyDependencyNotes by tasks.registering(WriteTextArtifact::class) {
+    group = "distribution"
+    description = "Writes installation and external dependency notes for the first-party bundle."
+    outputFile.set(firstPartyDependencyNotes)
+    contents.set(
+        """
+        Stardust Industry $modVersion for Minecraft $minecraftVersion
+        =============================================================
+
+        This archive contains exactly four first-party jars:
+        ${firstPartyJarNames.joinToString("\n        ") { "- mods/$it" }}
+
+        Runtime baseline:
+        - Minecraft $minecraftVersion
+        - NeoForge $neoForgeVersion or newer in the same compatible line
+
+        Module dependencies:
+        - stardustindustry-core: required by every extension.
+        - stardustindustry-utilsex: optional client integrations; JEI, Jade, WTHIT and
+          The One Probe are optional and are not included in this archive.
+        - stardustindustry-mekanismex: requires Mekanism 10.7.19 or newer.
+        - stardustindustry-ae2ex: requires Applied Energistics 2 19.2.18 or newer
+          (and the GuideME version required by that AE2 installation).
+
+        Install only extension jars whose external dependencies are present. The SHA-256
+        file beside the zip verifies the archive itself; it is not a mod jar.
+        """.trimIndent() + "\n",
+    )
+}
+
+val firstPartyStageDirectory = layout.buildDirectory.dir("staging/$firstPartyBundleName")
+val stageFirstPartyDistribution by tasks.registering(Sync::class) {
+    group = "distribution"
+    description = "Stages the four first-party jars and their dependency notes."
+    dependsOn(collectModJars, generateFirstPartyDependencyNotes)
+    from(layout.buildDirectory.dir("libs")) {
+        include(firstPartyJarNames)
+        into("mods")
+    }
+    from(firstPartyDependencyNotes)
+    into(firstPartyStageDirectory)
+}
+
+val verifyFirstPartyDistribution by tasks.registering(VerifyJarSet::class) {
+    group = "verification"
+    description = "Verifies that the distribution contains exactly the four first-party jars."
+    dependsOn(stageFirstPartyDistribution)
+    jarDirectory.set(firstPartyStageDirectory.map { it.dir("mods") })
+    expectedNames.set(firstPartyJarNames)
+}
+
+val firstPartyDistributionZip by tasks.registering(Zip::class) {
+    group = "distribution"
+    description = "Builds a versioned zip containing all four first-party mod jars."
+    dependsOn(verifyFirstPartyDistribution)
+    archiveFileName.set("$firstPartyBundleName.zip")
+    destinationDirectory.set(layout.buildDirectory.dir("distributions"))
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
+    into(firstPartyBundleName) {
+        from(firstPartyStageDirectory)
+    }
+}
+
+val firstPartyChecksumFile = layout.buildDirectory.file(
+    "distributions/$firstPartyBundleName.zip.sha256",
+)
+val firstPartyDistributionChecksum by tasks.registering(Sha256Artifact::class) {
+    group = "distribution"
+    description = "Writes the SHA-256 checksum for the first-party distribution zip."
+    dependsOn(firstPartyDistributionZip)
+    inputFile.set(firstPartyDistributionZip.flatMap { it.archiveFile })
+    outputFile.set(firstPartyChecksumFile)
+}
+
+tasks.register("packageFirstPartyMods") {
+    group = "distribution"
+    description = "Builds the versioned four-jar zip, dependency notes and SHA-256 checksum."
+    dependsOn(firstPartyDistributionChecksum)
 }
 
 val cleanRunExtensionMods by tasks.registering(Delete::class) {
@@ -196,12 +417,12 @@ val prepareRunClientMods by tasks.registering(Copy::class) {
     into(rootProject.file("run/client/mods"))
 }
 
-tasks.named("assemble") {
-    dependsOn(collectModJars)
-}
-
-tasks.register("runClient") {
+val runClient by tasks.registering(ForwardingRunClient::class) {
     group = "stardust industry"
     description = "Runs the client with Core and every extension module loaded."
-    dependsOn(":StardustIndustry-Core:runClient")
+    finalizedBy(":StardustIndustry-Core:runClient")
+}
+
+tasks.named("assemble") {
+    dependsOn(collectModJars)
 }
